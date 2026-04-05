@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=yes" />
+    
+    <!-- Título y descripción -->
+    <title>UPARQUEO - Sistema Profesional de Parqueaderos by ChrizDev</title>
+    <meta name="description" content="Sistema Profesional de Gestión de Parqueaderos. Control de vehículos, gestión de cobros y administración de negocios informales." />
+    <meta name="keywords" content="parqueadero, parking, gestión, vehículos, cobros, UPARQUEO, ChrizDev" />
+    <meta name="author" content="ChrizDev" />
+    <meta name="theme-color" content="#2563eb" />
+    
+    <!-- Favicon SVG (principal) -->
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    
+    <!-- Favicon alternativo para navegadores antiguos -->
+    <link rel="alternate icon" href="/favicon.ico" />
+    
+    <!-- Apple Touch Icon para iOS -->
+    <link rel="apple-touch-icon" href="/favicon.svg" />
+    
+    <!-- Manifest para PWA -->
+    <link rel="manifest" href="/manifest.json" />
+    
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="UPARQUEO - Sistema de Parqueaderos" />
+    <meta property="og:description" content="Sistema Profesional de Gestión de Parqueaderos" />
+    <meta property="og:image" content="/favicon.svg" />
+    
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary_lazy" />
+    <meta property="twitter:title" content="UPARQUEO - Sistema de Parqueaderos" />
+    <meta property="twitter:description" content="Sistema Profesional de Gestión de Parqueaderos" />
+    <meta property="twitter:image" content="/favicon.svg" />
+    
+    <!-- Preconexión a dominios externos para mejorar rendimiento -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    
+    <!-- Fuentes mejoradas -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;14..32,500;14..32,600;14..32,700;14..32,800;14..32,900&display=swap" rel="stylesheet" />
+    
+    <style>
+      /* Asegurar que los eventos táctiles funcionen correctamente */
+      img, button, a, [role="button"] {
+        touch-action: manipulation;
+        cursor: pointer;
+      }
+      
+      /* Mejorar respuesta táctil en móviles */
+      @media (max-width: 768px) {
+        .touch-target {
+          min-width: 44px;
+          min-height: 44px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>

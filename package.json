@@ -1,0 +1,84 @@
+{
+  "name": "uparqueo-by-chrizdev",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Sistema Profesional de Gestión de Parqueaderos",
+  "author": "ChrizDev",
+  "license": "MIT",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write \"src/**/*.{js,jsx,json,css}\"",
+    "build:analyze": "vite build --mode analyze",
+    "preview:analyze": "npm run build:analyze && vite preview",
+    "clean": "rimraf dist node_modules package-lock.json && npm install",
+    "clean:dist": "rimraf dist",
+    "clean:modules": "rimraf node_modules package-lock.json",
+    "update-deps": "npm update --latest",
+    "reset": "npm run clean:modules && npm install"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.101.1",
+    "framer-motion": "^12.38.0",
+    "lucide-react": "^1.7.0",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "react-intersection-observer": "^10.0.3",
+    "react-router-dom": "^7.14.0",
+    "sweetalert2": "^11.26.24"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.4",
+    "@tailwindcss/postcss": "^4.2.2",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.1",
+    "autoprefixer": "^10.4.27",
+    "eslint": "^9.39.4",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^7.0.1",
+    "eslint-plugin-react-refresh": "^0.5.2",
+    "globals": "^17.4.0",
+    "path": "^0.12.7",
+    "postcss": "^8.5.8",
+    "prettier": "^3.5.3",
+    "rimraf": "^6.1.3",
+    "rollup-plugin-visualizer": "^7.0.1",
+    "sass": "^1.99.0",
+    "tailwindcss": "^4.2.2",
+    "vite": "^8.0.1",
+    "vite-plugin-image-optimizer": "^2.0.3"
+  },
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  },
+  "keywords": [
+    "parqueadero",
+    "parking",
+    "gestión",
+    "react",
+    "vite",
+    "supabase"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/chrizdev/uparqueo"
+  }
+}
