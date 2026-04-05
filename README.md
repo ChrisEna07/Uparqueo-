@@ -1,35 +1,55 @@
 # 🅿️ UPARQUEO - Sistema de Gestión de Parqueaderos
 
-**UPARQUEO by ChrizDev** es una solución web moderna diseñada para optimizar el control de ingresos, salidas y cobros en parqueaderos. El sistema permite gestionar vehículos estándar (carros y motos) y puestos de negocios informales con cálculos de deuda automatizados.
+**UPARQUEO by ChrizDev** es una plataforma integral diseñada para optimizar el control de ingresos, salidas y cobros en parqueaderos y zonas comerciales. 
 
 ![Estado del Proyecto](https://img.shields.io/badge/Estado-En%20Desarrollo-green)
 ![React](https://img.shields.io/badge/React-20232A?style=for-the-badge&logo=react&logoColor=61DAFB)
 ![Supabase](https://img.shields.io/badge/Supabase-3ECF8E?style=for-the-badge&logo=supabase&logoColor=white)
-![TailwindCSS](https://img.shields.io/badge/Tailwind_CSS-38B2AC?style=for-the-badge&logo=tailwind-css&logoColor=white)
+
+---
+
+## 📸 Vistas Previas del Sistema
+
+### Gestión de Parqueadero
+Control de vehículos activos, filtrado por placa y tipos (Carros/Motos).
+![Gestión de Parqueadero](./Screenshots/Pantalla%20de%20Gestion%20de%20Parqueadero.png)
+
+### Registro de Entradas y Cobros
+Interfaz optimizada para el ingreso rápido de vehículos y cálculo automático de tarifas.
+<p align="center">
+  <img src="./Screenshots/Confirmacion%20de%20cobro%20por%20tiempo.png" width="45%" />
+  <img src="./Screenshots/Pantalla%20de%20Gestion%20de%20Parqueadero.png" width="45%" />
+</p>
+
+### Módulo de Negocios Informales
+Seguimiento de deudas, abonos y días de actividad para locales comerciales.
+![Negocios Informales](./Screenshots/Pantall%20de%20gestion%20de%20negocios%20informarles%20qu...png)
+
+### Configuración Global
+Panel para la parametrización de tarifas de forma dinámica.
+![Ajustes](./Screenshots/pantalla%20de%20ajustes.png)
 
 ---
 
 ## 🚀 Características Principales
 
-* **Gestión de Parqueadero (P):** Registro rápido de entrada por placa, cálculo automático de tiempo y valor por hora/fracción.
-* **Módulo de Informales (I):** Control de negocios (ej. puestos de comida) con seguimiento de días transcurridos, abonos y ajustes manuales de días.
-* **Configuración Global (A):** Panel para actualizar tarifas de carros, motos y negocios informales en tiempo real directamente en la base de datos.
-* **Historial Detallado:** Registro completo de transacciones finalizadas con filtros por placa y tipo de vehículo.
-* **Diseño Full Responsivo:** Interfaz adaptada para PC y dispositivos móviles con menú hamburguesa inteligente.
+* **Control de Flujo:** Registro de entrada y salida con cálculo de tiempo real.
+* **Gestión de Cartera:** Módulo especializado para negocios informales con registro de abonos y deudas pendientes.
+* **Historial Completo:** Registro detallado de todos los movimientos con opción de exportación.
+* **Diseño Responsivo:** Interfaz adaptada para dispositivos móviles con menú inteligente.
+* **Personalización:** Ajuste de tarifas globales para diferentes tipos de vehículos desde el panel de ajustes.
 
 ## 🛠️ Stack Tecnológico
 
-* **Frontend:** React.js con Vite.
-* **Estilos:** CSS3 Moderno / Tailwind CSS (Layouts flexibles y modo oscuro).
-* **Backend & DB:** Supabase (PostgreSQL) para persistencia de datos en tiempo real.
-* **Iconografía:** Lucide-React.
+* **Frontend:** React.js + Vite.
+* **Estilos:** CSS3 Moderno (Flexbox & Grid) + Lucide Icons.
+* **Backend:** Supabase (PostgreSQL) para datos en tiempo real.
 
-## 📦 Instalación y Configuración
+## 📦 Instalación
 
 1. **Clonar el repositorio:**
    ```bash
-   git clone [https://github.com/tu-usuario/uparqueo.git](https://github.com/tu-usuario/uparqueo.git)
-   cd uparqueo
+   git clone [https://github.com/ChrizDev07/uparqueo-by-chrizdev.git](https://github.com/ChrizDev07/uparqueo-by-chrizdev.git)
 
    Instalar dependencias:
 
