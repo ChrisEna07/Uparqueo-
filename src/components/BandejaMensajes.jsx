@@ -301,7 +301,12 @@ const BandejaMensajes = ({ admin }) => {
                 >
                   <div className="flex justify-between items-start mb-2">
                     <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase ${m.tipo === 'solicitud' ? 'bg-orange-100 text-orange-600' : m.tipo === 'soporte' ? 'bg-blue-100 text-blue-600' : 'bg-gray-100 text-gray-500'}`}>
-                      {m.tipo === 'solicitud' ? 'SOLICITUD' : m.tipo === 'soporte' ? 'SOPORTE' : m.remitente?.rol.replace('_', ' ')}
+                      {m.tipo === 'solicitud' ? 'SOLICITUD' : 
+                       m.tipo === 'soporte' ? 'SOPORTE' : 
+                       m.remitente?.rol === 'ambos' ? 'Admin Master' : 
+                       m.remitente?.rol === 'parqueadero' ? 'Admin Parqueo' : 
+                       m.remitente?.rol === 'informales' ? 'Admin Informales' : 
+                       m.remitente?.rol?.replace('_', ' ')}
                     </span>
                     <span className="text-[9px] text-gray-400 font-bold">{new Date(m.created_at).toLocaleDateString()}</span>
                   </div>
@@ -477,7 +482,12 @@ const BandejaMensajes = ({ admin }) => {
                     >
                       <option value="">Seleccionar destinatario...</option>
                       {usuariosHabilitados.map(u => (
-                        <option key={u.id} value={u.id}>@{u.username} ({u.rol.replace('_', ' ')})</option>
+                        <option key={u.id} value={u.id}>
+                          @{u.username} ({u.rol === 'ambos' ? 'Admin Master' : 
+                                          u.rol === 'parqueadero' ? 'Admin Parqueo' : 
+                                          u.rol === 'informales' ? 'Admin Informales' : 
+                                          u.rol?.replace('_', ' ')})
+                        </option>
                       ))}
                     </select>
                   </div>

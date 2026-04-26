@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '../lib/supabase';
 import { 
@@ -11,18 +11,21 @@ import {
 import { getAdmins, createAdmin, deleteAdmin, updateAdmin } from '../services/authService';
 import Swal from 'sweetalert2';
 
-const DevTools = ({ onClose, currentAdmin }) => {
+const DevTools = ({ onClose, currentAdmin, onAction }) => {
   const [cargando, setCargando] = useState(false);
   const [activeTab, setActiveTab] = useState('admins'); 
   const [adminsList, setAdminsList] = useState([]);
   const [modo, setModo] = useState('lista'); 
   const [usuarioSel, setUsuarioSel] = useState(null);
   const [subRolEmpleado, setSubRolEmpleado] = useState('parqueo'); // parqueo, informales, ambos
+  const [showCamera, setShowCamera] = useState(false);
+  const videoRef = useRef(null);
+  const canvasRef = useRef(null);
   
   const [formData, setFormData] = useState({
     username: '',
     password: '',
-    rol: 'parqueadero',
+    rol: 'ambos',
     nombre_completo: '',
     foto_perfil: ''
   });
@@ -53,6 +56,7 @@ const DevTools = ({ onClose, currentAdmin }) => {
           Swal.fire('¡Éxito!', 'Cuenta creada correctamente', 'success');
           setModo('lista');
           cargarAdmins();
+          if (onAction) onAction();
         } else {
           Swal.fire('Error', res.message, 'error');
         }
@@ -62,6 +66,7 @@ const DevTools = ({ onClose, currentAdmin }) => {
           Swal.fire('¡Actualizado!', 'Datos sincronizados', 'success');
           setModo('lista');
           cargarAdmins();
+          if (onAction) onAction();
         }
       }
     } catch (err) {
@@ -83,6 +88,7 @@ const DevTools = ({ onClose, currentAdmin }) => {
       setCargando(true);
       await deleteAdmin(id);
       cargarAdmins();
+      if (onAction) onAction();
       setCargando(false);
     }
   };
@@ -152,7 +158,7 @@ const DevTools = ({ onClose, currentAdmin }) => {
                     <h3 className="text-3xl font-black text-white">Cuentas en el Servidor</h3>
                     {modo === 'lista' && (
                       <button 
-                        onClick={() => { setModo('crear'); setFormData({ username: '', password: '', rol: 'parqueadero', nombre_completo: '', foto_perfil: '' }); }}
+                        onClick={() => { setModo('crear'); setFormData({ username: '', password: '', rol: 'ambos', nombre_completo: '', foto_perfil: '' }); }}
                         className="bg-blue-600 text-white px-8 py-4 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-2"
                       >
                         <UserPlus size={18}/> REGISTRAR NUEVO ACCESO
@@ -173,7 +179,12 @@ const DevTools = ({ onClose, currentAdmin }) => {
                             <img src={u.foto_perfil || `https://ui-avatars.com/api/?name=${u.username}`} className="w-16 h-16 rounded-2xl object-cover border-2 border-gray-800" />
                             <div>
                               <p className="text-white font-black text-lg">@{u.username}</p>
-                              <p className="text-[10px] text-blue-500 font-black uppercase tracking-widest">{u.rol.replace('_', ' ')}</p>
+                              <p className="text-[10px] text-blue-500 font-black uppercase tracking-widest">
+                                {u.rol === 'ambos' ? 'Admin Master' : 
+                                 u.rol === 'parqueadero' ? 'Admin Parqueo' : 
+                                 u.rol === 'informales' ? 'Admin Informales' : 
+                                 u.rol?.replace('_', ' ')}
+                              </p>
                             </div>
                           </div>
                           <div className="flex gap-2">
@@ -205,7 +216,101 @@ const DevTools = ({ onClose, currentAdmin }) => {
                           <label className="text-[10px] font-black text-gray-500 uppercase ml-2 mb-2 block tracking-widest">Nombre Real</label>
                           <input required value={formData.nombre_completo} onChange={e => setFormData({...formData, nombre_completo: e.target.value})} className="w-full bg-gray-950 border border-gray-800 rounded-2xl p-4 text-white font-bold outline-none focus:ring-2 focus:ring-blue-500"/>
                         </div>
+
+                        {/* FOTO DE PERFIL */}
+                        <div className="md:col-span-2 space-y-4">
+                          <label className="text-[10px] font-black text-gray-500 uppercase ml-2 block tracking-widest">Avatar / Foto de Perfil</label>
+                          <div className="flex flex-col md:flex-row gap-4 items-center">
+                            <img 
+                              src={formData.foto_perfil || `https://ui-avatars.com/api/?name=${formData.username || 'U'}`} 
+                              className="w-24 h-24 rounded-3xl object-cover border-2 border-gray-800"
+                            />
+                            <div className="flex-1 w-full space-y-2">
+                              <div className="flex gap-2">
+                                <button 
+                                  type="button"
+                                  onClick={() => document.getElementById('dev-foto-file').click()}
+                                  className="flex-1 bg-gray-900 hover:bg-gray-800 text-white p-3 rounded-xl text-[10px] font-black uppercase tracking-widest border border-gray-800 transition-all"
+                                >
+                                  Subir Archivo
+                                </button>
+                                <button 
+                                  type="button"
+                                  onClick={async () => {
+                                    setShowCamera(true);
+                                    try {
+                                      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
+                                      videoRef.current.srcObject = stream;
+                                    } catch (err) {
+                                      Swal.fire('Error', 'No se puede acceder a la cámara', 'error');
+                                      setShowCamera(false);
+                                    }
+                                  }}
+                                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white p-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all"
+                                >
+                                  Usar Cámara
+                                </button>
+                              </div>
+                              <input 
+                                type="url" 
+                                placeholder="O pega una URL de imagen..."
+                                value={formData.foto_perfil} 
+                                onChange={(e) => setFormData({...formData, foto_perfil: e.target.value})} 
+                                className="w-full bg-gray-950 border border-gray-800 rounded-xl p-3 text-white text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500"
+                              />
+                            </div>
+                          </div>
+                          <input 
+                            type="file" id="dev-foto-file" className="hidden" accept="image/*"
+                            onChange={(e) => {
+                              const file = e.target.files[0];
+                              if (file) {
+                                const reader = new FileReader();
+                                reader.onload = (re) => setFormData({...formData, foto_perfil: re.target.result});
+                                reader.readAsDataURL(file);
+                              }
+                            }}
+                          />
+                        </div>
                       </div>
+
+                      {showCamera && (
+                        <div className="fixed inset-0 z-[400] bg-black flex flex-col items-center justify-center p-4">
+                          <div className="relative w-full max-w-md aspect-video bg-gray-900 rounded-3xl overflow-hidden border-4 border-white/20">
+                            <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover" />
+                            <canvas ref={canvasRef} className="hidden" />
+                          </div>
+                          <div className="flex gap-4 mt-8">
+                            <button 
+                              type="button"
+                              onClick={() => {
+                                const video = videoRef.current;
+                                const canvas = canvasRef.current;
+                                canvas.width = video.videoWidth;
+                                canvas.height = video.videoHeight;
+                                canvas.getContext('2d').drawImage(video, 0, 0);
+                                const photo = canvas.toDataURL('image/jpeg');
+                                setFormData({...formData, foto_perfil: photo});
+                                video.srcObject.getTracks().forEach(t => t.stop());
+                                setShowCamera(false);
+                              }}
+                              className="bg-white text-blue-600 px-8 py-4 rounded-2xl font-black text-xs uppercase tracking-widest"
+                            >
+                              Capturar Foto
+                            </button>
+                            <button 
+                              type="button"
+                              onClick={() => {
+                                videoRef.current.srcObject.getTracks().forEach(t => t.stop());
+                                setShowCamera(false);
+                              }}
+                              className="bg-red-500 text-white px-8 py-4 rounded-2xl font-black text-xs uppercase tracking-widest"
+                            >
+                              Cancelar
+                            </button>
+                          </div>
+                        </div>
+                      )}
 
                       <div className="space-y-4">
                         <label className="text-[10px] font-black text-gray-500 uppercase ml-2 block tracking-widest">Nivel de Autorización:</label>
@@ -385,7 +490,7 @@ const DevTools = ({ onClose, currentAdmin }) => {
                     <h3 className="text-4xl font-black text-white mb-4 uppercase tracking-tighter">PROTOCOLO DE DESTRUCCIÓN DE DATOS</h3>
                     <p className="text-gray-500 text-lg">
                       Esta función limpia las bases de datos operativas. Puedes borrar secciones específicas o ejecutar una limpieza total. <br/>
-                      <span className="text-red-500 font-bold uppercase tracking-widest text-xs">Las cuentas de administrador NO serán eliminadas.</span>
+                      <span className="text-red-500 font-bold uppercase tracking-widest text-xs">Las cuentas de administrador (excepto la tuya) pueden ser eliminadas.</span>
                     </p>
                   </div>
 
@@ -395,14 +500,15 @@ const DevTools = ({ onClose, currentAdmin }) => {
                       { id: 'informales', label: 'INFORMALES', icon: Store, tables: ['negocios_informales'] },
                       { id: 'mensajes', label: 'MENSAJES', icon: MessageSquare, tables: ['mensajes'] },
                       { id: 'evidencias', label: 'EVIDENCIAS', icon: Eye, tables: ['evidencias'] },
-                      { id: 'lista_negra', label: 'LISTA NEGRA', icon: ShieldAlert, tables: ['lista_negra'] }
+                      { id: 'lista_negra', label: 'LISTA NEGRA', icon: ShieldAlert, tables: ['lista_negra'] },
+                      { id: 'admins', label: 'CUENTAS', icon: Users, tables: ['admins'] }
                     ].map(s => (
                       <button 
                         key={s.id}
                         onClick={async () => {
                           const confirm = await Swal.fire({
                             title: `¿Limpiar ${s.label}?`,
-                            text: `Se borrarán permanentemente todos los datos de esta sección.`,
+                            text: s.id === 'admins' ? 'Se borrarán todas las cuentas EXCEPTO la tuya actual.' : `Se borrarán permanentemente todos los datos de esta sección.`,
                             icon: 'warning',
                             showCancelButton: true,
                             confirmButtonColor: '#EF4444',
@@ -412,9 +518,27 @@ const DevTools = ({ onClose, currentAdmin }) => {
                             setCargando(true);
                             try {
                               for (const t of s.tables) {
-                                await supabase.from(t).delete().neq('id', '00000000-0000-0000-0000-000000000000');
+                                if (t === 'admins') {
+                                  // Antes de borrar admins, limpiar referencias para evitar errores de FK
+                                  const { data: adminsToDelete } = await supabase
+                                    .from('admins')
+                                    .select('id')
+                                    .neq('id', currentAdmin?.id || '00000000-0000-0000-0000-000000000000');
+                                  
+                                  if (adminsToDelete?.length > 0) {
+                                    const ids = adminsToDelete.map(a => a.id);
+                                    await supabase.from('mensajes').delete().or(`remitente_id.in.(${ids}),destinatario_id.in.(${ids})`);
+                                    await supabase.from('evidencias').delete().in('subido_por', ids);
+                                  }
+
+                                  await supabase.from(t).delete().neq('id', currentAdmin?.id || '00000000-0000-0000-0000-000000000000');
+                                } else {
+                                  await supabase.from(t).delete().neq('id', '00000000-0000-0000-0000-000000000000');
+                                }
                               }
                               Swal.fire('Sección Limpia', `Los datos de ${s.label} han sido eliminados.`, 'success');
+                              if (s.id === 'admins') cargarAdmins();
+                              if (onAction) onAction();
                             } catch (e) {
                               Swal.fire('Error', 'Fallo al borrar sección', 'error');
                             } finally {
@@ -457,15 +581,20 @@ const DevTools = ({ onClose, currentAdmin }) => {
                           if (doubleCheck.isConfirmed) {
                             setCargando(true);
                             try {
-                              const tables = ['registros_parqueadero', 'registros_parqueo', 'negocios_informales', 'mensajes', 'evidencias', 'lista_negra'];
+                              const tables = ['registros_parqueadero', 'registros_parqueo', 'negocios_informales', 'mensajes', 'evidencias', 'lista_negra', 'admins'];
                               for (const table of tables) {
                                 try {
-                                  await supabase.from(table).delete().neq('id', '00000000-0000-0000-0000-000000000000');
+                                  if (table === 'admins') {
+                                    await supabase.from(table).delete().neq('id', currentAdmin?.id || '00000000-0000-0000-0000-000000000000');
+                                  } else {
+                                    await supabase.from(table).delete().neq('id', '00000000-0000-0000-0000-000000000000');
+                                  }
                                 } catch (e) {
                                   console.warn(`No se pudo limpiar la tabla ${table}:`, e.message);
                                 }
                               }
-                              Swal.fire('Sistema Reiniciado', 'Todos los datos operativos disponibles han sido eliminados.', 'success');
+                              Swal.fire('Sistema Reiniciado', 'Todos los datos operativos y cuentas (excepto la tuya) han sido eliminados.', 'success');
+                              cargarAdmins();
                             } catch (err) {
                               Swal.fire('Error', 'No se pudieron borrar todas las tablas', 'error');
                             } finally {

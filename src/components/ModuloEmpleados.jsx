@@ -1,22 +1,25 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Users, UserPlus, Trash2, Shield, 
   Key, Mail, Loader2, AlertCircle,
   CheckCircle, User, Edit2, Eye, X,
   Briefcase, Calendar, Fingerprint,
-  Car, Store, ShieldCheck, LayoutGrid
+  Car, Store, ShieldCheck, LayoutGrid, Camera, Image as ImageIcon
 } from 'lucide-react';
 import { getAdmins, createAdmin, deleteAdmin, updateAdmin } from '../services/authService';
 import Swal from 'sweetalert2';
 
-const ModuloEmpleados = ({ admin, selectedModule }) => {
+const ModuloEmpleados = ({ admin, selectedModule, refreshKey }) => {
   const [empleados, setEmpleados] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [mostrarModal, setMostrarModal] = useState(false);
   const [modo, setModo] = useState('crear'); // crear, editar, detalles
   const [usuarioSel, setUsuarioSel] = useState(null);
   const [subRolEmpleado, setSubRolEmpleado] = useState('parqueo'); // parqueo, informales, ambos
+  const [showCamera, setShowCamera] = useState(false);
+  const videoRef = useRef(null);
+  const canvasRef = useRef(null);
   
   const [form, setForm] = useState({
     username: '',
@@ -35,7 +38,7 @@ const ModuloEmpleados = ({ admin, selectedModule }) => {
 
   useEffect(() => {
     cargarEmpleados();
-  }, []);
+  }, [refreshKey]);
 
   const cargarEmpleados = async () => {
     setCargando(true);
@@ -170,7 +173,12 @@ const ModuloEmpleados = ({ admin, selectedModule }) => {
                   <div className="min-w-0">
                     <h3 className="font-black text-gray-900 text-xl leading-tight truncate">@{emp.username}</h3>
                     <div className="flex items-center gap-2 mt-1">
-                      <span className="px-2 py-0.5 bg-indigo-50 text-indigo-600 rounded text-[9px] font-black uppercase tracking-widest">{emp.rol.replace('_', ' ')}</span>
+                      <span className="px-2 py-0.5 bg-indigo-50 text-indigo-600 rounded text-[9px] font-black uppercase tracking-widest">
+                        {emp.rol === 'ambos' ? 'Admin Master' : 
+                         emp.rol === 'parqueadero' ? 'Admin Parqueo' : 
+                         emp.rol === 'informales' ? 'Admin Informales' : 
+                         emp.rol?.replace('_', ' ')}
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -233,7 +241,10 @@ const ModuloEmpleados = ({ admin, selectedModule }) => {
                     {[
                       { l: 'Nombre Completo', v: usuarioSel?.nombre_completo || 'N/A' },
                       { l: 'Usuario', v: `@${usuarioSel?.username}` },
-                      { l: 'Rol Operativo', v: usuarioSel?.rol.replace('_', ' ').toUpperCase() },
+                      { l: 'Rol Operativo', v: (usuarioSel?.rol === 'ambos' ? 'Admin Master' : 
+                                               usuarioSel?.rol === 'parqueadero' ? 'Admin Parqueo' : 
+                                               usuarioSel?.rol === 'informales' ? 'Admin Informales' : 
+                                               usuarioSel?.rol?.replace('_', ' ')).toUpperCase() },
                       { l: 'Fecha de Alta', v: new Date(usuarioSel?.created_at).toLocaleDateString() }
                     ].map(d => (
                       <div key={d.l} className="bg-gray-50 p-5 rounded-2xl border border-gray-100">
@@ -270,7 +281,100 @@ const ModuloEmpleados = ({ admin, selectedModule }) => {
                         className="w-full px-6 py-4 bg-gray-50 border border-gray-200 rounded-2xl focus:ring-4 focus:ring-indigo-100 outline-none font-bold"
                       />
                     </div>
+
+                    <div className="md:col-span-2 space-y-4">
+                      <label className="text-[10px] font-black text-gray-400 uppercase ml-2 block tracking-widest">Foto de Perfil</label>
+                      <div className="flex flex-col md:flex-row gap-4 items-center">
+                        <img 
+                          src={form.foto_perfil || "https://ui-avatars.com/api/?name=" + form.username} 
+                          className="w-24 h-24 rounded-3xl object-cover border-4 border-gray-50 shadow-md"
+                        />
+                        <div className="flex-1 w-full space-y-2">
+                          <div className="flex gap-2">
+                            <button 
+                              type="button"
+                              onClick={() => document.getElementById('emp-foto-file').click()}
+                              className="flex-1 bg-gray-100 hover:bg-gray-200 p-3 rounded-xl text-[10px] font-black uppercase tracking-widest border border-gray-200 transition-all"
+                            >
+                              Elegir Archivo
+                            </button>
+                            <button 
+                              type="button"
+                              onClick={async () => {
+                                setShowCamera(true);
+                                try {
+                                  const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
+                                  videoRef.current.srcObject = stream;
+                                } catch (err) {
+                                  Swal.fire('Error', 'No se puede acceder a la cámara', 'error');
+                                  setShowCamera(false);
+                                }
+                              }}
+                              className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white p-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all"
+                            >
+                              Cámara
+                            </button>
+                          </div>
+                          <input 
+                            type="url" 
+                            placeholder="O pega una URL de imagen..."
+                            value={form.foto_perfil} 
+                            onChange={(e) => setForm({...form, foto_perfil: e.target.value})} 
+                            className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none font-medium text-xs" 
+                          />
+                        </div>
+                      </div>
+                      <input 
+                        type="file" id="emp-foto-file" className="hidden" accept="image/*"
+                        onChange={(e) => {
+                          const file = e.target.files[0];
+                          if (file) {
+                            const reader = new FileReader();
+                            reader.onload = (re) => setForm({...form, foto_perfil: re.target.result});
+                            reader.readAsDataURL(file);
+                          }
+                        }}
+                      />
+                    </div>
                   </div>
+
+                  {showCamera && (
+                    <div className="fixed inset-0 z-[200] bg-black flex flex-col items-center justify-center p-4">
+                      <div className="relative w-full max-w-md aspect-video bg-gray-900 rounded-3xl overflow-hidden border-4 border-white/20">
+                        <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover" />
+                        <canvas ref={canvasRef} className="hidden" />
+                      </div>
+                      <div className="flex gap-4 mt-8">
+                        <button 
+                          type="button"
+                          onClick={() => {
+                            const video = videoRef.current;
+                            const canvas = canvasRef.current;
+                            canvas.width = video.videoWidth;
+                            canvas.height = video.videoHeight;
+                            canvas.getContext('2d').drawImage(video, 0, 0);
+                            const photo = canvas.toDataURL('image/jpeg');
+                            setForm({...form, foto_perfil: photo});
+                            video.srcObject.getTracks().forEach(t => t.stop());
+                            setShowCamera(false);
+                          }}
+                          className="bg-white text-indigo-600 px-8 py-4 rounded-2xl font-black text-xs uppercase tracking-widest"
+                        >
+                          Capturar Foto
+                        </button>
+                        <button 
+                          type="button"
+                          onClick={() => {
+                            videoRef.current.srcObject.getTracks().forEach(t => t.stop());
+                            setShowCamera(false);
+                          }}
+                          className="bg-red-500 text-white px-8 py-4 rounded-2xl font-black text-xs uppercase tracking-widest"
+                        >
+                          Cancelar
+                        </button>
+                      </div>
+                    </div>
+                  )}
 
                   <div>
                     <label className="text-[10px] font-black text-gray-400 uppercase ml-2 mb-4 block tracking-widest">Puesto de Trabajo:</label>

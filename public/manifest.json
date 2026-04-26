@@ -1,19 +1,21 @@
 {
   "name": "UPARQUEO",
   "short_name": "UPARQUEO",
-  "description": "Sistema Profesional de Gestión de Parqueaderos",
+  "description": "Sistema de Gestión de Parqueaderos y Negocios Informales",
   "start_url": "/",
   "display": "standalone",
-  "theme_color": "#2563eb",
   "background_color": "#ffffff",
-  "orientation": "portrait",
-  "categories": ["business", "productivity"],
+  "theme_color": "#2563eb",
   "icons": [
     {
-      "src": "/favicon.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
-      "purpose": "any maskable"
+      "src": "logo upar.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "logo upar.png",
+      "sizes": "512x512",
+      "type": "image/png"
     }
   ]
 }

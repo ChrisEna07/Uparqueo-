@@ -108,6 +108,10 @@ export const updateAdmin = async (id, updateData) => {
 // Eliminar usuario
 export const deleteAdmin = async (id) => {
   try {
+    // Antes de borrar el admin, limpiar referencias
+    await supabase.from('mensajes').delete().or(`remitente_id.eq.${id},destinatario_id.eq.${id}`);
+    await supabase.from('evidencias').delete().eq('subido_por', id);
+
     const { error } = await supabase
       .from('admins')
       .delete()
@@ -116,6 +120,7 @@ export const deleteAdmin = async (id) => {
     if (error) throw error;
     return { success: true };
   } catch (err) {
+    console.error("Error eliminando admin:", err);
     return { success: false, message: err.message };
   }
 };

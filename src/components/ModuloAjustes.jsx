@@ -5,7 +5,7 @@ import { getTarifas, updateTarifa, updateDevKey } from '../services/parqueoServi
 import { Settings, Save, Info, DollarSign, Clock, TrendingUp, AlertCircle, CheckCircle, Edit2, Car, Bike, Store, Key } from 'lucide-react';
 import Swal from 'sweetalert2';
 
-const ModuloAjustes = ({ onActionSuccess, onDevToolsClick }) => {
+const ModuloAjustes = ({ onActionSuccess, onDevToolsClick, selectedModule }) => {
   const [tarifas, setTarifas] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [editando, setEditando] = useState(null);
@@ -268,10 +268,14 @@ const ModuloAjustes = ({ onActionSuccess, onDevToolsClick }) => {
     const tarifaMoto = getTarifaActual('moto');
     const tarifaInformal = getTarifaActual('informal');
     
+    let total = tarifaCarro + tarifaMoto + tarifaInformal;
+    if (selectedModule === 'parqueadero') total = tarifaCarro + tarifaMoto;
+    if (selectedModule === 'informales') total = tarifaInformal;
+
     return {
       porHora: tarifaCarro + tarifaMoto,
       porDia: tarifaInformal,
-      total: tarifaCarro + tarifaMoto + tarifaInformal
+      total
     };
   };
 
@@ -307,8 +311,16 @@ const ModuloAjustes = ({ onActionSuccess, onDevToolsClick }) => {
               <Settings className="text-purple-400" size={32} />
             </div>
             <div>
-              <h2 className="text-3xl font-black text-white">Configuración Global</h2>
-              <p className="text-gray-300 mt-1">Gestión de tarifas y parametrización del sistema</p>
+              <h2 className="text-3xl font-black text-white">
+                {selectedModule === 'parqueadero' ? 'Ajustes de Parqueadero' : 
+                 selectedModule === 'informales' ? 'Ajustes de Informales' : 
+                 'Configuración Global'}
+              </h2>
+              <p className="text-gray-300 mt-1">
+                {selectedModule === 'parqueadero' ? 'Gestión de tarifas para vehículos' :
+                 selectedModule === 'informales' ? 'Gestión de tarifas para negocios' :
+                 'Gestión de tarifas y parametrización del sistema'}
+              </p>
             </div>
           </div>
           
@@ -322,34 +334,38 @@ const ModuloAjustes = ({ onActionSuccess, onDevToolsClick }) => {
       </div>
 
       {/* Tarjetas de información rápida */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-        <motion.div 
-          whileHover={{ scale: 1.02 }}
-          className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl p-4 shadow-md"
-        >
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-blue-600 text-sm font-semibold">Ingresos por hora</p>
-              <p className="text-2xl font-bold text-blue-900">${ingresos.porHora.toLocaleString()}</p>
-              <p className="text-xs text-blue-500 mt-1">Carro + Moto</p>
+      <div className={`grid grid-cols-1 ${selectedModule ? 'md:grid-cols-2' : 'md:grid-cols-3'} gap-4 mb-8`}>
+        {(selectedModule === 'parqueadero' || !selectedModule) && (
+          <motion.div 
+            whileHover={{ scale: 1.02 }}
+            className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl p-4 shadow-md"
+          >
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-blue-600 text-sm font-semibold">Ingresos por hora</p>
+                <p className="text-2xl font-bold text-blue-900">${ingresos.porHora.toLocaleString()}</p>
+                <p className="text-xs text-blue-500 mt-1">Carro + Moto</p>
+              </div>
+              <Clock className="text-blue-500" size={32} />
             </div>
-            <Clock className="text-blue-500" size={32} />
-          </div>
-        </motion.div>
+          </motion.div>
+        )}
 
-        <motion.div 
-          whileHover={{ scale: 1.02 }}
-          className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-xl p-4 shadow-md"
-        >
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-purple-600 text-sm font-semibold">Informales por día</p>
-              <p className="text-2xl font-bold text-purple-900">${ingresos.porDia.toLocaleString()}</p>
-              <p className="text-xs text-purple-500 mt-1">Por cada negocio</p>
+        {(selectedModule === 'informales' || !selectedModule) && (
+          <motion.div 
+            whileHover={{ scale: 1.02 }}
+            className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-xl p-4 shadow-md"
+          >
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-purple-600 text-sm font-semibold">Informales por día</p>
+                <p className="text-2xl font-bold text-purple-900">${ingresos.porDia.toLocaleString()}</p>
+                <p className="text-xs text-purple-500 mt-1">Por cada negocio</p>
+              </div>
+              <Store className="text-purple-500" size={32} />
             </div>
-            <Store className="text-purple-500" size={32} />
-          </div>
-        </motion.div>
+          </motion.div>
+        )}
 
         <motion.div 
           whileHover={{ scale: 1.02 }}
@@ -359,7 +375,11 @@ const ModuloAjustes = ({ onActionSuccess, onDevToolsClick }) => {
             <div>
               <p className="text-green-600 text-sm font-semibold">Potencial diario</p>
               <p className="text-2xl font-bold text-green-900">${ingresos.total.toLocaleString()}</p>
-              <p className="text-xs text-green-500 mt-1">Base por todos los servicios</p>
+              <p className="text-xs text-green-500 mt-1">
+                {selectedModule === 'parqueadero' ? 'Base por servicios de parqueo' :
+                 selectedModule === 'informales' ? 'Base por servicios informales' :
+                 'Base por todos los servicios'}
+              </p>
             </div>
             <TrendingUp className="text-green-500" size={32} />
           </div>
@@ -369,7 +389,15 @@ const ModuloAjustes = ({ onActionSuccess, onDevToolsClick }) => {
       {/* Lista de tarifas */}
       <div className="space-y-4">
         <AnimatePresence>
-          {tarifas.map((t, index) => (
+          {tarifas.filter(t => {
+            if (selectedModule === 'parqueadero') {
+              return t.tipo_vehiculo === 'carro' || t.tipo_vehiculo === 'moto';
+            }
+            if (selectedModule === 'informales') {
+              return t.tipo_vehiculo === 'informal';
+            }
+            return true;
+          }).map((t, index) => (
             <motion.div
               key={t.id}
               initial={{ opacity: 0, x: -20 }}

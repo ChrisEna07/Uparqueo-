@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Car, Users, Settings, AlertCircle, CheckCircle, Menu, X, TrendingUp, ArrowLeft, ShieldAlert } from 'lucide-react';
+import { Car, Users, Settings, AlertCircle, CheckCircle, Menu, X, TrendingUp, ArrowLeft, ShieldAlert, Camera, Download, Image as ImageIcon } from 'lucide-react';
 import RegistroEntrada from './components/RegistroEntrada';
 import ListaActivos from './components/ListaActivos';
 import ModuloInformales from './components/ModuloInformales';
@@ -33,6 +33,10 @@ function App() {
   const [mostrarPerfil, setMostrarPerfil] = useState(false);
   const [perfilForm, setPerfilForm] = useState({ nombre_completo: '', foto_perfil: '' });
   const [devTaps, setDevTaps] = useState(0);
+  const [deferredPrompt, setDeferredPrompt] = useState(null);
+  const [showCamera, setShowCamera] = useState(false);
+  const videoRef = useRef(null);
+  const canvasRef = useRef(null);
   const menuRef = useRef(null);
 
   const showNotification = (message, type = 'success') => {
@@ -111,6 +115,25 @@ function App() {
       }
     }
   }, []);
+
+  useEffect(() => {
+    const handleBeforeInstallPrompt = (e) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+    };
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+  }, []);
+
+  const handleInstallApp = async () => {
+    if (deferredPrompt) {
+      deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
+      if (outcome === 'accepted') {
+        setDeferredPrompt(null);
+      }
+    }
+  };
 
   useEffect(() => {
     const handleKeyDown = async (e) => {
@@ -354,7 +377,11 @@ function App() {
         <Login onLoginSuccess={handleLogin} onDevRequest={activarDevTools} />
         <AnimatePresence>
           {mostrarDevTools && (
-            <DevTools onClose={() => setMostrarDevTools(false)} currentAdmin={admin} />
+            <DevTools 
+              onClose={() => setMostrarDevTools(false)} 
+              currentAdmin={admin} 
+              onAction={() => setRefreshKey(k => k + 1)}
+            />
           )}
         </AnimatePresence>
       </>
@@ -371,7 +398,11 @@ function App() {
         />
         <AnimatePresence>
           {mostrarDevTools && (
-            <DevTools onClose={() => setMostrarDevTools(false)} currentAdmin={admin} />
+            <DevTools 
+              onClose={() => setMostrarDevTools(false)} 
+              currentAdmin={admin} 
+              onAction={() => setRefreshKey(k => k + 1)}
+            />
           )}
         </AnimatePresence>
       </>
@@ -407,7 +438,6 @@ function App() {
         <div className="relative w-full px-4">
           <div className="flex items-center justify-between flex-wrap gap-4">
             <div className="flex items-center gap-4 flex-1 min-w-0">
-              {/* Botón de Menú Móvil */}
               <button 
                 onClick={handleMenuToggle}
                 className="md:hidden p-3 bg-white/10 hover:bg-white/20 rounded-2xl transition-all active:scale-95 border border-white/10"
@@ -432,6 +462,15 @@ function App() {
             </div>
             
             <div className="flex items-center gap-3">
+              {deferredPrompt && (
+                <button 
+                  onClick={handleInstallApp}
+                  className="hidden md:flex bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest border border-white/10 transition-all items-center gap-2 active:scale-95 shadow-lg shadow-emerald-900/20"
+                >
+                  <Download size={16} /> Instalar Web App
+                </button>
+              )}
+
               <button 
                 onClick={() => setAppView('home')}
                 className="bg-white/10 hover:bg-white/20 backdrop-blur-md px-4 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-[0.2em] border border-white/10 transition-all flex items-center gap-2 active:scale-95"
@@ -448,7 +487,12 @@ function App() {
                   className="w-10 h-10 rounded-xl object-cover border-2 border-white/30"
                 />
                 <div className="hidden sm:block text-left">
-                  <p className="text-xs font-bold opacity-70 uppercase tracking-tighter">{admin?.rol}</p>
+                  <p className="text-xs font-bold opacity-70 uppercase tracking-tighter">
+                    {admin?.rol === 'ambos' ? 'Admin Master' : 
+                     admin?.rol === 'parqueadero' ? 'Admin Parqueo' : 
+                     admin?.rol === 'informales' ? 'Admin Informales' : 
+                     admin?.rol?.replace('_', ' ')}
+                  </p>
                   <p className="text-sm font-black">{admin?.nombre_completo || admin?.username}</p>
                 </div>
               </div>
@@ -530,7 +574,7 @@ function App() {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
               >
-                <ModuloEmpleados admin={admin} selectedModule={selectedModule} />
+                <ModuloEmpleados admin={admin} selectedModule={selectedModule} refreshKey={refreshKey} />
               </motion.div>
             )}
 
@@ -560,6 +604,7 @@ function App() {
                 <ModuloAjustes 
                   onActionSuccess={(msg) => showNotification(msg, 'success')}
                   onDevToolsClick={() => setMostrarDevTools(true)}
+                  selectedModule={selectedModule}
                 />
               </motion.div>
             )}
@@ -619,6 +664,17 @@ function App() {
                     </button>
                   );
                 })}
+                {deferredPrompt && (
+                  <button 
+                    onClick={handleInstallApp}
+                    className="w-full flex items-center gap-4 px-6 py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all text-emerald-600 bg-emerald-50 hover:bg-emerald-100"
+                  >
+                    <div className="p-2 rounded-xl bg-white shadow-sm">
+                      <Download size={18} />
+                    </div>
+                    Instalar App
+                  </button>
+                )}
               </nav>
 
               <div className="p-6 border-t border-gray-100">
@@ -636,7 +692,11 @@ function App() {
 
       <AnimatePresence>
         {mostrarDevTools && (
-          <DevTools onClose={() => setMostrarDevTools(false)} />
+            <DevTools 
+              onClose={() => setMostrarDevTools(false)} 
+              currentAdmin={admin} 
+              onAction={() => setRefreshKey(k => k + 1)}
+            />
         )}
       </AnimatePresence>
 
@@ -665,9 +725,94 @@ function App() {
                   <input type="text" value={perfilForm.nombre_completo} onChange={(e) => setPerfilForm({...perfilForm, nombre_completo: e.target.value})} className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none font-medium" />
                 </div>
                 <div>
-                  <label className="block text-sm font-bold text-gray-700 mb-2">URL Foto de Perfil</label>
-                  <input type="url" value={perfilForm.foto_perfil} onChange={(e) => setPerfilForm({...perfilForm, foto_perfil: e.target.value})} className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none font-medium" />
+                  <label className="block text-sm font-bold text-gray-700 mb-2">Foto de Perfil</label>
+                  <div className="flex flex-col gap-4">
+                    <div className="flex gap-2">
+                      <button 
+                        type="button"
+                        onClick={() => document.getElementById('foto-file').click()}
+                        className="flex-1 flex items-center justify-center gap-2 bg-gray-100 hover:bg-gray-200 p-3 rounded-xl transition-all"
+                      >
+                        <ImageIcon size={18}/>
+                        <span className="text-xs font-bold uppercase tracking-widest">Elegir</span>
+                      </button>
+                      <button 
+                        type="button"
+                        onClick={async () => {
+                          setShowCamera(true);
+                          try {
+                            const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
+                            videoRef.current.srcObject = stream;
+                          } catch (err) {
+                            Swal.fire('Error', 'No se pudo acceder a la cámara', 'error');
+                            setShowCamera(false);
+                          }
+                        }}
+                        className="flex-1 flex items-center justify-center gap-2 bg-gray-100 hover:bg-gray-200 p-3 rounded-xl transition-all"
+                      >
+                        <Camera size={18}/>
+                        <span className="text-xs font-bold uppercase tracking-widest">Cámara</span>
+                      </button>
+                    </div>
+                    <input 
+                      type="file" id="foto-file" className="hidden" accept="image/*"
+                      onChange={(e) => {
+                        const file = e.target.files[0];
+                        if (file) {
+                          const reader = new FileReader();
+                          reader.onload = (re) => setPerfilForm({...perfilForm, foto_perfil: re.target.result});
+                          reader.readAsDataURL(file);
+                        }
+                      }}
+                    />
+                    <input 
+                      type="url" 
+                      placeholder="O pega una URL de imagen..."
+                      value={perfilForm.foto_perfil} 
+                      onChange={(e) => setPerfilForm({...perfilForm, foto_perfil: e.target.value})} 
+                      className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none font-medium text-xs" 
+                    />
+                  </div>
                 </div>
+
+                {showCamera && (
+                  <div className="fixed inset-0 z-[200] bg-black flex flex-col items-center justify-center p-4">
+                    <div className="relative w-full max-w-md aspect-video bg-gray-900 rounded-3xl overflow-hidden border-4 border-white/20">
+                      <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover" />
+                      <canvas ref={canvasRef} className="hidden" />
+                    </div>
+                    <div className="flex gap-4 mt-8">
+                      <button 
+                        type="button"
+                        onClick={() => {
+                          const video = videoRef.current;
+                          const canvas = canvasRef.current;
+                          canvas.width = video.videoWidth;
+                          canvas.height = video.videoHeight;
+                          canvas.getContext('2d').drawImage(video, 0, 0);
+                          const photo = canvas.toDataURL('image/jpeg');
+                          setPerfilForm({...perfilForm, foto_perfil: photo});
+                          video.srcObject.getTracks().forEach(t => t.stop());
+                          setShowCamera(false);
+                        }}
+                        className="bg-white text-blue-600 px-8 py-4 rounded-2xl font-black text-xs uppercase tracking-widest"
+                      >
+                        Capturar Foto
+                      </button>
+                      <button 
+                        type="button"
+                        onClick={() => {
+                          videoRef.current.srcObject.getTracks().forEach(t => t.stop());
+                          setShowCamera(false);
+                        }}
+                        className="bg-red-500 text-white px-8 py-4 rounded-2xl font-black text-xs uppercase tracking-widest"
+                      >
+                        Cancelar
+                      </button>
+                    </div>
+                  </div>
+                )}
+                
                 <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white font-black py-4 rounded-xl shadow-lg shadow-blue-200 transition-all active:scale-95">Guardar Cambios</button>
               </form>
             </motion.div>
