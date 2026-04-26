@@ -22,14 +22,20 @@
     "reset": "npm run clean:modules && npm install"
   },
   "dependencies": {
+    "@capacitor/android": "^8.3.1",
+    "@capacitor/cli": "^8.3.1",
+    "@capacitor/core": "^8.3.1",
     "@supabase/supabase-js": "^2.101.1",
     "framer-motion": "^12.38.0",
+    "jspdf": "^4.2.1",
+    "jspdf-autotable": "^5.0.7",
     "lucide-react": "^1.7.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "react-intersection-observer": "^10.0.3",
     "react-router-dom": "^7.14.0",
-    "sweetalert2": "^11.26.24"
+    "sweetalert2": "^11.26.24",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.4",

@@ -74,6 +74,28 @@ export const updateTarifa = async (tipo, nuevoValor) => {
   }
 };
 
+// 3.5. ACTUALIZAR CLAVE DEV
+export const updateDevKey = async (nuevaClave) => {
+  try {
+    const { data, error } = await supabase
+      .from('configuracion')
+      .upsert({ 
+        tipo_vehiculo: 'dev_key',
+        valor_texto: nuevaClave, 
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'tipo_vehiculo' })
+      .select();
+    
+    if (error) throw error;
+    return data;
+  } catch (error) {
+    console.error("Error en updateDevKey:", error);
+    // Si falla por falta de columna, intentamos usar valor_fraccion (aunque sea texto, algunos DBs lo permiten si es cast)
+    // Pero lo mejor es informar al usuario.
+    throw new Error("No se pudo actualizar la clave. Asegúrese de que la tabla 'configuracion' tenga la columna 'valor_texto'.");
+  }
+};
+
 // 4. OBTENER TODA LA CONFIGURACIÓN
 export const getConfiguracion = async () => {
   try {
@@ -93,31 +115,56 @@ export const getConfiguracion = async () => {
 // SERVICIOS DE REGISTRO DE VEHÍCULOS
 // ============================================
 
-// 5. REGISTRAR ENTRADA
+// 5. REGISTRAR ENTRADA (Con validación de Lista Negra)
 export const registrarEntrada = async (placa, cliente, tipo) => {
   try {
     if (!placa || placa.trim() === '') {
       throw new Error("La placa es obligatoria");
     }
 
-    // Verificar si el vehículo ya está activo
+    const placaFinal = placa.toUpperCase();
+
+    // A. Verificar si está en la Lista Negra
+    try {
+      const { data: blacklisted, error: blackError } = await supabase
+        .from('lista_negra')
+        .select('*')
+        .eq('placa_relacionada', placaFinal)
+        .maybeSingle();
+
+      if (blackError) {
+        // Si la tabla no existe, ignoramos el error y permitimos continuar
+        if (blackError.message.includes('not found')) {
+          console.warn("Tabla 'lista_negra' no existe. Saltando validación.");
+        } else {
+          console.error("Error checking blacklist:", blackError);
+        }
+      } else if (blacklisted) {
+        throw new Error(`ACCESO DENEGADO: El vehículo ${placaFinal} está en la lista negra. Motivo: ${blacklisted.motivo || 'No pago'}`);
+      }
+    } catch (e) {
+      if (e.message.includes('ACCESO DENEGADO')) throw e;
+      console.warn("Error en validación de lista negra (posible tabla faltante):", e.message);
+    }
+
+    // B. Verificar si el vehículo ya está activo
     const { data: vehiculoActivo, error: checkError } = await supabase
       .from('registros_parqueadero')
       .select('id, placa')
-      .eq('placa', placa.toUpperCase())
+      .eq('placa', placaFinal)
       .eq('estado', 'activo')
       .maybeSingle();
 
     if (checkError) throw checkError;
 
     if (vehiculoActivo) {
-      throw new Error(`El vehículo con placa ${placa} ya está en el parqueadero`);
+      throw new Error(`El vehículo con placa ${placaFinal} ya está en el parqueadero`);
     }
 
     const { data, error } = await supabase
       .from('registros_parqueadero')
       .insert([{ 
-        placa: placa.toUpperCase(), 
+        placa: placaFinal, 
         cliente_nombre: cliente || null, 
         tipo_vehiculo: tipo,
         estado: 'activo',
@@ -125,11 +172,7 @@ export const registrarEntrada = async (placa, cliente, tipo) => {
       }])
       .select();
 
-    if (error) {
-      console.error("Error al registrar entrada:", error);
-      throw error;
-    }
-    
+    if (error) throw error;
     return data;
   } catch (error) {
     console.error("Error en registrarEntrada:", error);
@@ -147,10 +190,26 @@ export const getRegistrosActivos = async () => {
       .order('entrada', { ascending: false });
     
     if (error) throw error;
-    return data || [];
+    return { success: true, data: data || [] };
   } catch (error) {
     console.error("Error en getRegistrosActivos:", error);
     throw new Error("No se pudieron cargar los vehículos activos");
+  }
+};
+
+// 6.5. ELIMINAR VEHÍCULO (Borrado lógico o físico)
+export const eliminarVehiculo = async (id) => {
+  try {
+    const { error } = await supabase
+      .from('registros_parqueadero')
+      .delete()
+      .eq('id', id);
+    
+    if (error) throw error;
+    return { success: true };
+  } catch (error) {
+    console.error("Error en eliminarVehiculo:", error);
+    throw new Error("No se pudo eliminar el registro");
   }
 };
 
@@ -341,8 +400,68 @@ export const validarVehiculoActivo = async (placa) => {
 };
 
 // ============================================
-// SERVICIOS DE REPORTES
+// SERVICIOS DE CLIENTES Y LISTA NEGRA
 // ============================================
+
+// 14. OBTENER HISTORIAL DE UN CLIENTE ESPECÍFICO
+export const getHistorialCliente = async (placa) => {
+  try {
+    const { data, error } = await supabase
+      .from('registros_parqueadero')
+      .select('*')
+      .eq('placa', placa.toUpperCase())
+      .order('entrada', { ascending: false });
+    
+    if (error) throw error;
+    
+    const totalPagado = data.reduce((sum, reg) => sum + (reg.total_pagar || 0), 0);
+    const visitas = data.length;
+    
+    return { success: true, data, resumen: { totalPagado, visitas } };
+  } catch (error) {
+    console.error("Error en getHistorialCliente:", error);
+    return { success: false, data: [], resumen: { totalPagado: 0, visitas: 0 } };
+  }
+};
+
+// 15. AGREGAR A LISTA NEGRA
+export const addToBlacklist = async (placa, motivo, adminId) => {
+  try {
+    const { error } = await supabase
+      .from('lista_negra')
+      .insert([{
+        placa_relacionada: placa.toUpperCase(),
+        nombre_completo: 'CLIENTE PARQUEADERO',
+        identificacion: 'S/N',
+        motivo,
+        registrado_por: adminId,
+        modulo: 'parqueadero',
+        created_at: new Date().toISOString()
+      }]);
+    
+    if (error) throw error;
+    return { success: true };
+  } catch (error) {
+    console.error("Error en addToBlacklist:", error);
+    throw new Error("No se pudo agregar a la lista negra");
+  }
+};
+
+// 16. ELIMINAR DE LISTA NEGRA
+export const removeFromBlacklist = async (placa) => {
+  try {
+    const { error } = await supabase
+      .from('lista_negra')
+      .delete()
+      .eq('placa_relacionada', placa.toUpperCase());
+    
+    if (error) throw error;
+    return { success: true };
+  } catch (error) {
+    console.error("Error en removeFromBlacklist:", error);
+    throw new Error("No se pudo eliminar de la lista negra");
+  }
+};
 
 // 13. GENERAR REPORTE POR RANGO DE FECHAS
 export const getReportePorFechas = async (fechaInicio, fechaFin) => {
@@ -381,14 +500,19 @@ export default {
   getTarifas,
   getTarifaByTipo,
   updateTarifa,
+  updateDevKey,
   getConfiguracion,
   registrarEntrada,
   getRegistrosActivos,
+  eliminarVehiculo,
   getHistorialRegistros,
   calcularCobro,
   registrarSalida,
   procesarCobroYSalida,
   getEstadisticasDia,
   validarVehiculoActivo,
-  getReportePorFechas
+  getReportePorFechas,
+  getHistorialCliente,
+  addToBlacklist,
+  removeFromBlacklist
 };

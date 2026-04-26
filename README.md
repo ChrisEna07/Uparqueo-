@@ -1,8 +1,8 @@
-# 🅿️ UPARQUEO - Sistema de Gestión de Parqueaderos
+# 🅿️ UPARQUEO - Sistema de Gestión de Parqueaderos (Pro Version)
 
-**UPARQUEO by ChrizDev** es una plataforma integral diseñada para optimizar el control de ingresos, salidas y cobros en parqueaderos y zonas comerciales. 
+**UPARQUEO by ChrizDev** es una plataforma integral de alto rendimiento diseñada para la gestión total de parqueaderos y zonas comerciales. Esta versión modernizada incluye herramientas avanzadas de auditoría, control de personal y seguridad de datos.
 
-![Estado del Proyecto](https://img.shields.io/badge/Estado-En%20Desarrollo-green)
+![Estado del Proyecto](https://img.shields.io/badge/Estado-Produccion-green)
 ![React](https://img.shields.io/badge/React-20232A?style=for-the-badge&logo=react&logoColor=61DAFB)
 ![Supabase](https://img.shields.io/badge/Supabase-3ECF8E?style=for-the-badge&logo=supabase&logoColor=white)
 
@@ -21,64 +21,79 @@ Interfaz optimizada para el ingreso rápido de vehículos y cálculo automático
   <img src="./Screenshots/Pantalla%20de%20Gestion%20de%20Parqueadero.png" width="45%" />
 </p>
 
-### Módulo de Negocios Informales
-Seguimiento de deudas, abonos y días de actividad para locales comerciales.
-![Negocios Informales](./Screenshots/Pantall%20de%20gestion%20de%20negocios%20informarles%20qu...png)
+---
 
-### Configuración Global
-Panel para la parametrización de tarifas de forma dinámica.
-![Ajustes](./Screenshots/pantalla%20de%20ajustes.png)
+## 🚀 Nuevas Características (Fase 3)
+
+### 👥 Gestión de Personal y Roles
+* **Control de Empleados:** Módulo administrativo para crear, editar y supervisar cuentas de staff.
+* **Roles de Acceso:** Distinción entre `Admin` (Acceso total) y `Empleado` (Solo operativo).
+
+### 💬 Mensajería Interna Profesional
+* **Chat por Hilos:** Comunicación organizada por temas entre el staff y la administración.
+* **Estado de Solución:** Los administradores pueden marcar casos como "Solucionados", archivándolos en un registro histórico de auditoría.
+
+### 📸 Evidencias y Auditoría
+* **Registro Fotográfico:** Capacidad de asociar fotos y notas técnicas a cada vehículo para evitar reclamos por daños previos.
+* **Historial Detallado:** Trazabilidad completa de quién registró cada acción y en qué momento.
+
+### 📊 Reportes e Inteligencia de Negocio
+* **Exportación Profesional:** Generación de reportes financieros y operativos en formato **PDF** y **Excel (XLSX)**.
+* **Filtros Temporales:** Análisis de ingresos diarios, semanales y mensuales.
+
+### 💾 Seguridad y Portabilidad
+* **Modo Desarrollador:** Panel protegido para mantenimiento técnico.
+* **Backups JSON:** Exportación e Importación de toda la base de datos en un solo archivo para respaldos de emergencia.
 
 ---
 
-## 🚀 Características Principales
-
-* **Control de Flujo:** Registro de entrada y salida con cálculo de tiempo real.
-* **Gestión de Cartera:** Módulo especializado para negocios informales con registro de abonos y deudas pendientes.
-* **Historial Completo:** Registro detallado de todos los movimientos con opción de exportación.
-* **Diseño Responsivo:** Interfaz adaptada para dispositivos móviles con menú inteligente.
-* **Personalización:** Ajuste de tarifas globales para diferentes tipos de vehículos desde el panel de ajustes.
-
 ## 🛠️ Stack Tecnológico
 
-* **Frontend:** React.js + Vite.
-* **Estilos:** CSS3 Moderno (Flexbox & Grid) + Lucide Icons.
-* **Backend:** Supabase (PostgreSQL) para datos en tiempo real.
+* **Frontend:** React.js + Vite + Framer Motion (Animaciones).
+* **Iconografía:** Lucide Icons.
+* **Backend:** Supabase (PostgreSQL) con suscripciones en tiempo real.
+* **Documentación:** jsPDF (PDF) y SheetJS (Excel).
+
+---
 
 ## 📦 Instalación
 
 1. **Clonar el repositorio:**
    ```bash
-   git clone [https://github.com/ChrizDev07/uparqueo-by-chrizdev.git](https://github.com/ChrizDev07/uparqueo-by-chrizdev.git)
+   git clone https://github.com/ChrizDev07/uparqueo-by-chrizdev.git
+   ```
 
-   Instalar dependencias:
-
+2. **Instalar dependencias:**
+   ```bash
    npm install
+   ```
 
-   Variables de Entorno:
-Crea un archivo .env en la raíz y agrega tus credenciales de Supabase:
+3. **Variables de Entorno:**
+   Crea un archivo `.env` en la raíz y agrega tus credenciales de Supabase:
+   ```env
+   VITE_SUPABASE_URL=tu_url_aqui
+   VITE_SUPABASE_ANON_KEY=tu_key_aqui
+   ```
 
-VITE_SUPABASE_URL=tu_url_aqui
-VITE_SUPABASE_ANON_KEY=tu_key_aqui
+4. **Ejecutar:**
+   ```bash
+   npm run dev
+   ```
 
-Ejecutar en modo desarrollo:
-npm run dev
+---
 
-📐 Estructura de la Base de Datos
-El sistema utiliza tres tablas principales en Supabase:
+## 📐 Estructura de la Base de Datos
 
-vehiculos: Control de activos e historial (placa, tipo, fecha_ingreso, etc).
+* **admins:** Gestión de perfiles y roles (admin/empleado).
+* **registros_parqueadero:** Historial de vehículos y cobros.
+* **negocios_informales:** Seguimiento de puestos y deudas.
+* **mensajes:** Sistema de hilos de comunicación interna.
+* **evidencias:** Almacenamiento de pruebas fotográficas y notas.
+* **configuracion:** Parámetros globales y tarifas.
 
-negocios_informales: Seguimiento de puestos (nombre, dueño, abonos, dias_manuales).
+---
 
-configuracion: Parámetros globales de precios por tipo de vehículo.
+## 👤 Autor
+**Chris (ChrizDev)** - Desarrollador FullStack apasionado por crear herramientas que transforman la gestión operativa en experiencias digitales premium.
 
-📸 Vista Previa
-Escritorio: Interfaz amplia con visualización de ganancias potenciales y contadores en tiempo real.
-
-Móvil: Navbar optimizado que oculta etiquetas para priorizar el espacio de trabajo.
-
-👤 Autor
-Chris (ChrizDev) - Desarrollador FullStack apasionado por crear herramientas funcionales y estéticas.
-
-Desarrollado con ❤️ para una gestión de parqueo eficiente.
+Desarrollado con ❤️ para una gestión de parqueo eficiente y moderna.

@@ -2,39 +2,21 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import path from 'path'
 
-// https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
   
-  server: {
-    port: 3000,
-    open: true,
-    host: true,
-    strictPort: false,
-  },
-  
-  preview: {
-    port: 4173,
-    open: true,
-    host: true,
-  },
-  
+  // Quitamos la configuración forzada de esbuild para que Vite 8 use OXC por defecto
   build: {
     outDir: 'dist',
-    assetsDir: 'assets',
-    sourcemap: false,
-    minify: 'esbuild',
-    target: 'es2020',
-    cssCodeSplit: true,
     emptyOutDir: true,
-    chunkSizeWarningLimit: 1000,
+    target: 'es2020',
     rollupOptions: {
       output: {
-        manualChunks: {
-          'react-vendor': ['react', 'react-dom', 'react-router-dom'],
-          'animation-vendor': ['framer-motion'],
-          'ui-vendor': ['lucide-react', 'sweetalert2'],
-          'supabase-vendor': ['@supabase/supabase-js'],
+        // Simplificamos los chunks al máximo para evitar errores de Rolldown
+        manualChunks(id) {
+          if (id.includes('node_modules')) {
+            return 'vendor';
+          }
         },
       },
     },
@@ -50,26 +32,11 @@ export default defineConfig({
     },
     extensions: ['.js', '.jsx', '.json'],
   },
-  
-  publicDir: 'public',
+
+  // Mantengo tus configuraciones de servidor y assets
+  server: {
+    port: 3000,
+    host: true,
+  },
   assetsInclude: ['**/*.png', '**/*.jpg', '**/*.jpeg', '**/*.svg', '**/*.gif', '**/*.webp'],
-  
-  optimizeDeps: {
-    include: [
-      'react',
-      'react-dom',
-      'react-router-dom',
-      'framer-motion',
-      'lucide-react',
-      'sweetalert2',
-      '@supabase/supabase-js'
-    ],
-  },
-  
-  // Configuración de CSS simplificada (sin postcss para evitar errores)
-  css: {
-    devSourcemap: true,
-  },
-  
-  envPrefix: 'VITE_',
 })

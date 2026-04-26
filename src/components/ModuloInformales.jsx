@@ -1,588 +1,422 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { 
+  Store, Plus, Search, DollarSign, 
+  Trash2, AlertCircle, CheckCircle, 
+  Calendar, Clock, User, Phone, MapPin,
+  MoreVertical, Edit2, Power, History,
+  Loader2, ArrowRight, FileText, X as XIcon
+} from 'lucide-react';
+import { 
+  getNegociosInformales, 
+  registrarNegocio, 
+  registrarAbono,
+  desactivarNegocio,
+  agregarDiasManuales
+} from '../services/informalService';
+import { getTarifaInformal } from '../services/informalService';
+import { generarPDFInformal } from '../services/pdfService';
 import { supabase } from '../lib/supabase';
-import { agregarDiasManuales, desactivarNegocio, calcularDeudaDetallada, registrarAbono } from '../services/informalService';
-import { Store, Plus, PowerOff, DollarSign, User, Phone, Building2, Calendar, CreditCard, AlertCircle, Search } from 'lucide-react';
 import Swal from 'sweetalert2';
 
-const ModuloInformales = ({ onActionSuccess }) => {
+const ModuloInformales = () => {
   const [negocios, setNegocios] = useState([]);
   const [cargando, setCargando] = useState(true);
-  const [form, setForm] = useState({ nombre_cliente: '', nombre_negocio: '', celular: '' });
+  const [procesando, setProcesando] = useState(false);
+  const [busqueda, setBusqueda] = useState('');
+  const [mostrarForm, setMostrarForm] = useState(false);
   const [montoAbono, setMontoAbono] = useState({});
-  const [filtro, setFiltro] = useState('');
-  const [estadisticas, setEstadisticas] = useState({ total: 0, deudaTotal: 0, ingresosTotales: 0 });
+
+  const [tarifaGlobal, setTarifaGlobal] = useState(0);
+
+  const [form, setForm] = useState({
+    nombre_cliente: '',
+    nombre_negocio: '',
+    celular: ''
+  });
+
+  useEffect(() => {
+    cargarNegocios();
+    obtenerTarifa();
+  }, []);
+
+  const obtenerTarifa = async () => {
+    const t = await getTarifaInformal();
+    setTarifaGlobal(t);
+  };
 
   const cargarNegocios = async () => {
     setCargando(true);
-    const { data } = await supabase.from('negocios_informales').select('*').eq('activo', true);
-    const negociosData = data || [];
-    setNegocios(negociosData);
-    
-    let deudaTotal = 0;
-    let ingresosTotales = 0;
-    negociosData.forEach(n => {
-      const { deudaTotal: deuda } = calcularDeudaDetallada(n);
-      deudaTotal += deuda;
-      ingresosTotales += (n.abonos || 0);
-    });
-    
-    setEstadisticas({
-      total: negociosData.length,
-      deudaTotal: deudaTotal,
-      ingresosTotales: ingresosTotales
-    });
-    
+    const res = await getNegociosInformales();
+    if (res.success) setNegocios(res.data);
     setCargando(false);
-  };
-
-  useEffect(() => { cargarNegocios(); }, []);
-
-  const handleAbono = async (id, abonosActuales, negocioNombre) => {
-    const valor = parseFloat(montoAbono[id]);
-    
-    if (!valor || valor <= 0 || isNaN(valor)) {
-      await Swal.fire({
-        title: 'Monto inválido',
-        text: 'Por favor ingrese un monto válido mayor a 0',
-        icon: 'error',
-        confirmButtonColor: '#EF4444',
-        confirmButtonText: 'Cerrar'
-      });
-      return;
-    }
-
-    try {
-      const result = await Swal.fire({
-        title: 'Confirmar Abono',
-        html: `
-          <div class="text-left">
-            <div class="bg-green-50 p-4 rounded-lg mb-4">
-              <p class="text-sm text-gray-600 mb-2">Negocio:</p>
-              <p class="text-xl font-bold text-gray-800">${negocioNombre}</p>
-            </div>
-            <div class="flex justify-between items-center text-lg">
-              <span class="text-gray-600">Monto a abonar:</span>
-              <span class="text-2xl font-bold text-green-600">$${valor.toLocaleString()}</span>
-            </div>
-            <div class="flex justify-between items-center text-sm mt-2">
-              <span class="text-gray-500">Abonos acumulados actuales:</span>
-              <span class="font-semibold">$${(abonosActuales || 0).toLocaleString()}</span>
-            </div>
-          </div>
-        `,
-        icon: 'question',
-        showCancelButton: true,
-        confirmButtonColor: '#10B981',
-        cancelButtonColor: '#6B7280',
-        confirmButtonText: '✅ Registrar Abono',
-        cancelButtonText: '❌ Cancelar'
-      });
-
-      if (result.isConfirmed) {
-        await registrarAbono(id, abonosActuales, valor);
-        
-        await Swal.fire({
-          title: '¡Abono Registrado!',
-          html: `
-            <div class="text-center">
-              <div class="text-6xl mb-4">💰</div>
-              <p class="text-lg mb-2">Se ha registrado el abono de</p>
-              <p class="text-2xl font-bold text-green-600">$${valor.toLocaleString()}</p>
-              <p class="text-sm text-gray-500 mt-2">para ${negocioNombre}</p>
-            </div>
-          `,
-          icon: 'success',
-          confirmButtonColor: '#10B981',
-          confirmButtonText: 'Aceptar',
-          timer: 2500,
-          timerProgressBar: true
-        });
-        
-        setMontoAbono({ ...montoAbono, [id]: '' });
-        cargarNegocios();
-        if (onActionSuccess) onActionSuccess(`Abono registrado para ${negocioNombre}`);
-      }
-    } catch (e) {
-      await Swal.fire({
-        title: 'Error',
-        text: e.message || 'Error al registrar el abono',
-        icon: 'error',
-        confirmButtonColor: '#EF4444',
-        confirmButtonText: 'Cerrar'
-      });
-    }
   };
 
   const handleRegistro = async (e) => {
     e.preventDefault();
+    setProcesando(true);
     
-    if (!form.nombre_cliente || !form.nombre_negocio) {
-      await Swal.fire({
-        title: 'Campos incompletos',
-        text: 'Por favor complete los campos requeridos',
-        icon: 'warning',
-        confirmButtonColor: '#F59E0B',
-        confirmButtonText: 'Cerrar'
-      });
-      return;
-    }
+    Swal.fire({
+      title: 'Registrando negocio...',
+      text: 'Estamos dando de alta el nuevo local',
+      allowOutsideClick: false,
+      didOpen: () => Swal.showLoading()
+    });
 
     try {
-      const result = await Swal.fire({
-        title: 'Registrar Negocio Informal',
-        html: `
-          <div class="text-left">
-            <div class="bg-orange-50 p-4 rounded-lg mb-4">
-              <p class="text-sm text-gray-600">Nuevo negocio:</p>
-              <p class="font-bold text-lg">${form.nombre_negocio}</p>
-              <p class="text-sm">Dueño: ${form.nombre_cliente}</p>
-              ${form.celular ? `<p class="text-sm">📱 ${form.celular}</p>` : ''}
-            </div>
-            <div class="bg-blue-50 p-3 rounded-lg">
-              <p class="text-sm text-blue-800">💰 Tarifa: $5,000 por día calendario</p>
-            </div>
-          </div>
-        `,
-        icon: 'info',
-        showCancelButton: true,
-        confirmButtonColor: '#F59E0B',
-        cancelButtonColor: '#6B7280',
-        confirmButtonText: '✅ Registrar',
-        cancelButtonText: '❌ Cancelar'
+      const res = await registrarNegocio({ 
+        ...form, 
+        valor_diario: tarifaGlobal
       });
-
-      if (result.isConfirmed) {
-        await supabase.from('negocios_informales').insert([form]);
-        
-        await Swal.fire({
-          title: '¡Registro Exitoso!',
-          html: `
-            <div class="text-center">
-              <div class="text-6xl mb-4">🏪</div>
-              <p class="text-lg mb-2">Negocio registrado correctamente</p>
-              <p class="font-bold text-orange-600">${form.nombre_negocio}</p>
-              <p class="text-sm text-gray-500 mt-2">Tarifa: $5,000 por día</p>
-            </div>
-          `,
-          icon: 'success',
-          confirmButtonColor: '#10B981',
-          confirmButtonText: 'Aceptar'
-        });
-        
+      if (res.success) {
+        Swal.close();
+        await Swal.fire('¡Éxito!', 'Negocio registrado correctamente', 'success');
+        setMostrarForm(false);
         setForm({ nombre_cliente: '', nombre_negocio: '', celular: '' });
         cargarNegocios();
-        if (onActionSuccess) onActionSuccess(`Negocio ${form.nombre_negocio} registrado`);
+      } else {
+        Swal.fire('Error', res.error?.message || 'No se pudo registrar el negocio', 'error');
       }
-    } catch (e) {
-      await Swal.fire({
-        title: 'Error',
-        text: 'Error al registrar el negocio',
-        icon: 'error',
-        confirmButtonColor: '#EF4444',
-        confirmButtonText: 'Cerrar'
-      });
+    } catch (error) {
+      Swal.fire('Error', 'Ocurrió un error inesperado al registrar', 'error');
+    } finally {
+      setProcesando(false);
     }
   };
 
-  const handleAgregarDia = async (id, diasManuales, negocioNombre) => {
-    try {
-      const result = await Swal.fire({
-        title: 'Agregar Día Manual',
-        html: `
-          <div class="text-center">
-            <p class="mb-2">¿Agregar un día adicional a</p>
-            <p class="font-bold text-lg">${negocioNombre}</p>
-            <p class="text-sm text-gray-500 mt-2">Se añadirá $5,000 a la deuda</p>
-          </div>
-        `,
-        icon: 'question',
-        showCancelButton: true,
-        confirmButtonColor: '#F59E0B',
-        cancelButtonColor: '#6B7280',
-        confirmButtonText: '✅ Agregar Día',
-        cancelButtonText: '❌ Cancelar'
-      });
-
-      if (result.isConfirmed) {
-        await agregarDiasManuales(id, diasManuales);
-        
-        await Swal.fire({
-          title: 'Día Agregado',
-          html: `
-            <div class="text-center">
-              <div class="text-4xl mb-2">📅</div>
-              <p>Se ha agregado un día a ${negocioNombre}</p>
-              <p class="text-lg font-bold text-orange-600 mt-2">+$5,000</p>
-            </div>
-          `,
-          icon: 'success',
-          confirmButtonColor: '#10B981',
-          confirmButtonText: 'Aceptar',
-          timer: 2000,
-          timerProgressBar: true
-        });
-        
-        cargarNegocios();
-        if (onActionSuccess) onActionSuccess(`Día agregado a ${negocioNombre}`);
-      }
-    } catch (e) {
-      await Swal.fire({
-        title: 'Error',
-        text: 'Error al agregar el día',
-        icon: 'error',
-        confirmButtonColor: '#EF4444',
-        confirmButtonText: 'Cerrar'
-      });
-    }
-  };
-
-  const handleDesactivar = async (id, negocioNombre) => {
+  const handleAbono = async (id, abonosActuales, valor) => {
+    if (!valor || valor <= 0) return;
+    
     const result = await Swal.fire({
-      title: 'Desactivar Negocio',
-      html: `
-        <div class="text-center">
-          <div class="text-6xl mb-4">⚠️</div>
-          <p class="mb-2">¿Estás seguro de desactivar</p>
-          <p class="font-bold text-lg text-red-600">${negocioNombre}</p>
-          <p class="text-sm text-gray-500 mt-2">Esta acción no se puede deshacer</p>
-        </div>
-      `,
-      icon: 'warning',
+      title: 'Confirmar Abono',
+      text: `¿Registrar abono de $${valor.toLocaleString()}?`,
+      icon: 'question',
       showCancelButton: true,
-      confirmButtonColor: '#EF4444',
-      cancelButtonColor: '#6B7280',
-      confirmButtonText: '✅ Sí, desactivar',
-      cancelButtonText: '❌ Cancelar'
+      confirmButtonText: 'Sí, abonar'
     });
 
     if (result.isConfirmed) {
+      setProcesando(true);
+      
+      Swal.fire({
+        title: 'Procesando abono...',
+        text: 'Registrando información en el sistema',
+        allowOutsideClick: false,
+        didOpen: () => Swal.showLoading()
+      });
+
       try {
-        await desactivarNegocio(id);
-        
-        await Swal.fire({
-          title: 'Negocio Desactivado',
-          html: `
-            <div class="text-center">
-              <div class="text-6xl mb-4">🗑️</div>
-              <p>${negocioNombre} ha sido desactivado</p>
-            </div>
-          `,
-          icon: 'success',
-          confirmButtonColor: '#10B981',
-          confirmButtonText: 'Aceptar'
-        });
-        
+        await registrarAbono(id, abonosActuales, valor);
+        Swal.close();
+        await Swal.fire('¡Abono Registrado!', `$${valor.toLocaleString()}`, 'success');
+        setMontoAbono({ ...montoAbono, [id]: '' });
         cargarNegocios();
-        if (onActionSuccess) onActionSuccess(`Negocio ${negocioNombre} desactivado`);
-      } catch (e) {
-        await Swal.fire({
-          title: 'Error',
-          text: 'Error al desactivar el negocio',
-          icon: 'error',
-          confirmButtonColor: '#EF4444',
-          confirmButtonText: 'Cerrar'
-        });
+      } catch (err) {
+        Swal.fire('Error', 'Fallo al abonar', 'error');
+      } finally {
+        setProcesando(false);
+      }
+    }
+  };
+
+  const handlePagoTotal = async (negocio) => {
+    const faltante = negocio.deuda_acumulada;
+    if (faltante <= 0) return;
+
+    const result = await Swal.fire({
+      title: 'Liquidar Deuda',
+      text: `¿Pagar el total de $${faltante.toLocaleString()}?`,
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#10B981',
+      confirmButtonText: 'Sí, liquidar todo'
+    });
+
+    if (result.isConfirmed) {
+      setProcesando(true);
+      Swal.fire({
+        title: 'Procesando pago total...',
+        text: 'Liquidando cuenta pendiente',
+        allowOutsideClick: false,
+        didOpen: () => Swal.showLoading()
+      });
+
+      try {
+        await registrarAbono(negocio.id, negocio.abonos_hoy, faltante);
+        Swal.close();
+        await Swal.fire('Cuenta Liquidada', 'Se ha pagado el total del día', 'success');
+        cargarNegocios();
+      } catch (err) {
+        Swal.fire('Error', 'No se pudo liquidar', 'error');
+      } finally {
+        setProcesando(false);
+      }
+    }
+  };
+
+  const handleAgregarDia = async (id, diasActuales) => {
+    const { value: dias } = await Swal.fire({
+      title: 'Extender Vigencia',
+      input: 'number',
+      inputLabel: 'Días adicionales',
+      inputValue: 1,
+      showCancelButton: true
+    });
+
+    if (dias) {
+      setProcesando(true);
+      Swal.fire({
+        title: 'Agregando días...',
+        allowOutsideClick: false,
+        didOpen: () => Swal.showLoading()
+      });
+
+      try {
+        await agregarDiasManuales(id, parseInt(diasActuales), parseInt(dias));
+        Swal.close();
+        await Swal.fire('¡Días Agregados!', '', 'success');
+        cargarNegocios();
+      } catch (err) {
+        Swal.fire('Error', 'Fallo al agregar días', 'error');
+      } finally {
+        setProcesando(false);
+      }
+    }
+  };
+
+  const handleDesactivar = async (id, estadoActual) => {
+    const accion = estadoActual ? 'desactivar' : 'activar';
+    const result = await Swal.fire({
+      title: `¿${accion.toUpperCase()} negocio?`,
+      icon: 'warning',
+      showCancelButton: true
+    });
+
+    if (result.isConfirmed) {
+      setProcesando(true);
+      Swal.fire({
+        title: 'Procesando cambio de estado...',
+        allowOutsideClick: false,
+        didOpen: () => Swal.showLoading()
+      });
+
+      try {
+        await desactivarNegocio(id, !estadoActual);
+        Swal.close();
+        cargarNegocios();
+      } catch (err) {
+        Swal.fire('Error', 'No se pudo cambiar el estado', 'error');
+      } finally {
+        setProcesando(false);
       }
     }
   };
 
   const negociosFiltrados = negocios.filter(n => 
-    n.nombre_negocio.toLowerCase().includes(filtro.toLowerCase()) ||
-    n.nombre_cliente.toLowerCase().includes(filtro.toLowerCase())
+    n.nombre_negocio.toLowerCase().includes(busqueda.toLowerCase()) ||
+    n.nombre_cliente.toLowerCase().includes(busqueda.toLowerCase())
   );
-
-  if (cargando) {
-    return (
-      <motion.div 
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        className="bg-white rounded-2xl shadow-2xl p-12"
-      >
-        <div className="flex flex-col items-center justify-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-600 mb-4"></div>
-          <p className="text-gray-500">Cargando negocios informales...</p>
-        </div>
-      </motion.div>
-    );
-  }
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.5 }}
-      className="space-y-6"
-    >
-      {/* Header con gradiente y estadísticas */}
-      <div className="bg-gradient-to-r from-orange-600 to-red-600 rounded-2xl p-6 shadow-2xl">
-        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
-          <div className="flex items-center gap-3">
-            <div className="bg-white/20 p-3 rounded-xl">
-              <Store className="text-white" size={32} />
-            </div>
-            <div>
-              <h2 className="text-2xl font-bold text-white">Negocios Informales</h2>
-              <p className="text-orange-100 mt-1">Gestión de cobros y abonos diarios</p>
-            </div>
-          </div>
-          
-          <div className="flex gap-3">
-            <div className="bg-white/20 backdrop-blur-sm rounded-lg px-4 py-2">
-              <div className="text-white text-xs">Negocios Activos</div>
-              <div className="text-2xl font-bold text-white">{estadisticas.total}</div>
-            </div>
-            <div className="bg-white/20 backdrop-blur-sm rounded-lg px-4 py-2">
-              <div className="text-white text-xs">Deuda Total</div>
-              <div className="text-2xl font-bold text-white">${estadisticas.deudaTotal.toLocaleString()}</div>
-            </div>
-            <div className="bg-white/20 backdrop-blur-sm rounded-lg px-4 py-2">
-              <div className="text-white text-xs">Ingresos Totales</div>
-              <div className="text-2xl font-bold text-white">${estadisticas.ingresosTotales.toLocaleString()}</div>
-            </div>
-          </div>
+    <div className="max-w-7xl mx-auto p-4 space-y-8">
+      {/* HEADER GESTIÓN INFORMAL */}
+      <div className="flex flex-col md:flex-row justify-between items-center gap-6 mb-10">
+        <div>
+          <h2 className="text-4xl font-black text-gray-800 flex items-center gap-4">
+            <Store className="text-orange-600" size={40} /> Gestión Informal
+          </h2>
+          <p className="text-gray-500 font-medium">Control de puestos y recaudos diarios</p>
+        </div>
+        <button 
+          onClick={() => setMostrarForm(true)}
+          className="bg-orange-600 hover:bg-orange-700 text-white px-10 py-5 rounded-[1.5rem] font-black text-xs uppercase tracking-widest flex items-center gap-3 shadow-2xl shadow-orange-200 transition-all active:scale-95"
+        >
+          <Plus size={20} /> Registrar Nuevo Puesto
+        </button>
+      </div>
+
+      {/* BUSCADOR */}
+      <div className="bg-white p-4 md:p-6 rounded-[2rem] md:rounded-[2.5rem] shadow-sm border border-gray-100 flex gap-4">
+        <div className="flex-1 flex items-center gap-3 bg-gray-50 border border-gray-100 rounded-2xl px-5 py-3 md:py-4 focus-within:ring-4 focus-within:ring-orange-100 transition-all">
+          <Search className="text-gray-400 shrink-0" size={20} />
+          <input 
+            type="text" 
+            placeholder="Buscar por negocio o dueño..." 
+            value={busqueda}
+            onChange={(e) => setBusqueda(e.target.value)}
+            className="w-full bg-transparent border-none outline-none font-bold text-gray-700 placeholder-gray-400"
+          />
         </div>
       </div>
 
-      {/* Formulario de Registro */}
-      <motion.div
-        initial={{ opacity: 0, x: -20 }}
-        animate={{ opacity: 1, x: 0 }}
-        transition={{ delay: 0.1 }}
-        className="bg-white rounded-2xl shadow-xl overflow-hidden border border-gray-100"
-      >
-        <div className="bg-gradient-to-r from-gray-50 to-gray-100 p-4 border-b">
-          <h3 className="font-bold text-gray-800 flex items-center gap-2">
-            <Plus size={20} className="text-orange-500" />
-            Registrar Nuevo Negocio Informal
-          </h3>
-          <p className="text-sm text-gray-500 mt-1">Tarifa: $5,000 por día calendario</p>
-        </div>
-        
-        <form onSubmit={handleRegistro} className="p-6">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {/* Campo de Dueño - Usando clases globales */}
-            <div className="input-icon-container">
-              <div className="input-icon">
-                <User size={18} className="text-gray-400" />
-              </div>
-              <input 
-                type="text" 
-                placeholder="Nombre del dueño *" 
-                className="input-with-icon"
-                value={form.nombre_cliente} 
-                onChange={e => setForm({...form, nombre_cliente: e.target.value})} 
-                required 
-              />
+      {/* LISTADO DE NEGOCIOS */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+        <AnimatePresence>
+          {cargando ? (
+            <div className="col-span-full py-20 text-center text-gray-300 font-black animate-pulse">CARGANDO REGISTROS...</div>
+          ) : negociosFiltrados.length === 0 ? (
+            <div className="col-span-full py-20 text-center bg-white rounded-[3rem] border-2 border-dashed border-gray-100">
+              <Store size={48} className="mx-auto text-gray-200 mb-4" />
+              <p className="text-gray-400 font-bold uppercase tracking-widest text-xs">No hay negocios registrados</p>
             </div>
-            
-            {/* Campo de Negocio - Usando clases globales */}
-            <div className="input-icon-container">
-              <div className="input-icon">
-                <Building2 size={18} className="text-gray-400" />
-              </div>
-              <input 
-                type="text" 
-                placeholder="Nombre del negocio *" 
-                className="input-with-icon"
-                value={form.nombre_negocio} 
-                onChange={e => setForm({...form, nombre_negocio: e.target.value})} 
-                required 
-              />
-            </div>
-            
-            {/* Campo de Celular - Usando clases globales */}
-            <div className="input-icon-container">
-              <div className="input-icon">
-                <Phone size={18} className="text-gray-400" />
-              </div>
-              <input 
-                type="tel" 
-                placeholder="Celular (opcional)" 
-                className="input-with-icon"
-                value={form.celular} 
-                onChange={e => setForm({...form, celular: e.target.value})} 
-              />
-            </div>
-          </div>
-          
-          <motion.button
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
-            type="submit"
-            className="mt-4 w-full bg-gradient-to-r from-orange-500 to-orange-600 text-white font-bold py-2 rounded-lg hover:shadow-lg transition-all flex items-center justify-center gap-2"
-          >
-            <Store size={18} />
-            REGISTRAR NEGOCIO
-          </motion.button>
-        </form>
-      </motion.div>
-
-      {/* Filtro de búsqueda - Usando clases globales */}
-      <div className="input-icon-container">
-        <div className="input-icon">
-          <Search size={18} className="text-gray-400" />
-        </div>
-        <input
-          type="text"
-          placeholder="Buscar por nombre de negocio o dueño..."
-          value={filtro}
-          onChange={(e) => setFiltro(e.target.value)}
-          className="input-with-icon"
-        />
-      </div>
-
-      {/* Tabla de Cobros y Abonos */}
-      <motion.div 
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 0.2 }}
-        className="bg-white rounded-2xl shadow-xl overflow-hidden"
-      >
-        <div className="overflow-x-auto">
-          <AnimatePresence>
-            {negociosFiltrados.length === 0 ? (
-              <motion.div
-                key="empty"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="p-12 text-center"
+          ) : (
+            negociosFiltrados.map((n) => (
+              <motion.div 
+                layout key={n.id}
+                className={`bg-white rounded-[2rem] md:rounded-[2.5rem] shadow-xl border overflow-hidden transition-all group ${!n.activo ? 'opacity-60 grayscale' : 'border-gray-100'}`}
               >
-                <AlertCircle className="mx-auto text-gray-400 mb-3" size={48} />
-                <p className="text-gray-500 text-lg">No hay negocios registrados</p>
-              </motion.div>
-            ) : (
-              <table className="w-full min-w-[800px]">
-                <thead className="bg-gradient-to-r from-gray-800 to-gray-900 text-white">
-                  <tr>
-                    <th className="p-4">Negocio</th>
-                    <th className="p-4">Días / Total</th>
-                    <th className="p-4">Abonado</th>
-                    <th className="p-4">Deuda Pendiente</th>
-                    <th className="p-4">Acciones</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {negociosFiltrados.map((n, index) => {
-                    const { diasTotales, deudaTotal } = calcularDeudaDetallada(n);
-                    const porcentajePagado = ((n.abonos || 0) / ((diasTotales * 5000) || 1)) * 100;
-                    
-                    return (
-                      <motion.tr
-                        key={n.id}
-                        initial={{ opacity: 0, x: -20 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        transition={{ delay: index * 0.05 }}
-                        whileHover={{ backgroundColor: '#FFF7ED' }}
-                        className="border-b border-gray-100 transition-colors"
+                {/* Cabecera Tarjeta */}
+                <div className={`p-6 md:p-8 ${n.deuda_acumulada > 0 ? 'bg-red-50/30' : 'bg-emerald-50/30'}`}>
+                  <div className="flex justify-between items-start mb-6">
+                    <div className={`p-4 rounded-2xl ${n.deuda_acumulada > 0 ? 'bg-red-50 text-red-600' : 'bg-emerald-50 text-emerald-600'}`}>
+                      <Store size={24} />
+                    </div>
+                    <div className="flex flex-col items-end">
+                      <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest ${n.activo ? 'bg-emerald-100 text-emerald-600' : 'bg-gray-200 text-gray-500'}`}>
+                        {n.activo ? 'Activo' : 'Inactivo'}
+                      </span>
+                      <p className="text-[10px] text-gray-400 font-black mt-1 uppercase tracking-widest">ID #{n.id.slice(0,5)}</p>
+                    </div>
+                  </div>
+
+                  <h3 className="text-2xl font-black text-gray-900 leading-tight mb-1">{n.nombre_negocio}</h3>
+                  <div className="flex items-center gap-2 text-gray-500 font-bold text-xs uppercase tracking-widest">
+                    <User size={12} /> {n.nombre_cliente}
+                  </div>
+                </div>
+
+                {/* Info Financiera */}
+                <div className="p-6 md:p-8 space-y-6">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="bg-gray-50 p-4 rounded-2xl">
+                      <p className="text-[9px] text-gray-400 font-black uppercase tracking-widest mb-1">Días Totales</p>
+                      <p className="text-lg font-black text-gray-800">{n.dias_totales || 0} d</p>
+                    </div>
+                    <div className="bg-gray-50 p-4 rounded-2xl">
+                      <p className="text-[9px] text-gray-400 font-black uppercase tracking-widest mb-1">Abonos Hoy</p>
+                      <p className="text-lg font-black text-emerald-600">${n.abonos_hoy.toLocaleString()}</p>
+                    </div>
+                  </div>
+
+                  <div className={`p-5 rounded-3xl border-2 flex justify-between items-center ${n.deuda_acumulada > 0 ? 'bg-red-50 border-red-100' : 'bg-emerald-50 border-emerald-100'}`}>
+                    <div>
+                      <p className="text-[9px] font-black uppercase tracking-widest opacity-60">Deuda Hoy</p>
+                      <p className={`text-2xl font-black ${n.deuda_acumulada > 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                        ${n.deuda_acumulada.toLocaleString()}
+                      </p>
+                    </div>
+                    {n.deuda_acumulada > 0 && (
+                      <button 
+                        disabled={procesando}
+                        onClick={() => handlePagoTotal(n)}
+                        className="bg-red-600 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest active:scale-95 disabled:opacity-50"
                       >
-                        <td className="p-4">
-                          <p className="font-bold text-gray-800">{n.nombre_negocio}</p>
-                          <p className="text-xs text-gray-500 flex items-center gap-1 mt-1">
-                            <User size={12} /> {n.nombre_cliente}
-                          </p>
-                          {n.celular && (
-                            <p className="text-xs text-gray-400 flex items-center gap-1 mt-1">
-                              <Phone size={10} /> {n.celular}
-                            </p>
-                          )}
-                        </td>
-                        <td className="p-4">
-                          <div className="flex items-center gap-2">
-                            <Calendar size={14} className="text-gray-400" />
-                            <span className="font-semibold">{diasTotales} días</span>
-                          </div>
-                          <p className="text-xs text-gray-500 mt-1">
-                            Total: ${(diasTotales * 5000).toLocaleString()}
-                          </p>
-                        </td>
-                        <td className="p-4">
-                          <span className="text-blue-600 font-semibold">
-                            ${(n.abonos || 0).toLocaleString()}
-                          </span>
-                          <div className="w-full bg-gray-200 rounded-full h-1.5 mt-2">
-                            <div 
-                              className="bg-blue-500 h-1.5 rounded-full transition-all"
-                              style={{ width: `${Math.min(porcentajePagado, 100)}%` }}
-                            />
-                          </div>
-                        </td>
-                        <td className="p-4">
-                          <span className="font-bold text-2xl text-red-600">
-                            ${deudaTotal.toLocaleString()}
-                          </span>
-                        </td>
-                        <td className="p-4">
-                          <div className="space-y-2">
-                            <div className="flex gap-2">
-                              <div className="flex-1 input-icon-container">
-                                <div className="input-icon">
-                                  <DollarSign size={14} className="text-gray-400" />
-                                </div>
-                                <input 
-                                  type="number" 
-                                  placeholder="Monto abono"
-                                  className="input-with-icon text-sm"
-                                  value={montoAbono[n.id] || ''}
-                                  onChange={(e) => setMontoAbono({...montoAbono, [n.id]: e.target.value})}
-                                />
-                              </div>
-                              <motion.button 
-                                whileHover={{ scale: 1.05 }}
-                                whileTap={{ scale: 0.95 }}
-                                onClick={() => handleAbono(n.id, n.abonos, n.nombre_negocio)}
-                                className="bg-green-600 text-white px-3 py-1 rounded-lg hover:bg-green-700 transition-all flex items-center gap-1"
-                              >
-                                <CreditCard size={14} /> Abonar
-                              </motion.button>
-                            </div>
-                            <div className="flex gap-2">
-                              <motion.button 
-                                whileHover={{ scale: 1.05 }}
-                                whileTap={{ scale: 0.95 }}
-                                onClick={() => handleAgregarDia(n.id, n.dias_manuales, n.nombre_negocio)} 
-                                className="flex-1 bg-gray-100 text-gray-700 text-sm py-1.5 rounded-lg hover:bg-gray-200 transition-all flex items-center justify-center gap-1"
-                              >
-                                <Plus size={12}/> Día
-                              </motion.button>
-                              <motion.button 
-                                whileHover={{ scale: 1.05 }}
-                                whileTap={{ scale: 0.95 }}
-                                onClick={() => handleDesactivar(n.id, n.nombre_negocio)} 
-                                className="flex-1 bg-red-50 text-red-600 text-sm py-1.5 rounded-lg hover:bg-red-100 transition-all flex items-center justify-center gap-1"
-                              >
-                                <PowerOff size={12}/> Desactivar
-                              </motion.button>
-                            </div>
-                          </div>
-                        </td>
-                      </motion.tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            )}
-          </AnimatePresence>
-        </div>
-        
-        {/* Footer */}
-        {negociosFiltrados.length > 0 && (
-          <div className="bg-gray-50 p-4 border-t">
-            <div className="flex justify-between items-center text-sm text-gray-600">
-              <span>Mostrando {negociosFiltrados.length} de {negocios.length} negocios activos</span>
-              <div className="flex gap-2">
-                <span className="flex items-center gap-1">
-                  <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                  Tarifa diaria: $5,000
-                </span>
+                        Liquidar
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Acciones */}
+                  <div className="space-y-3">
+                    <div className="flex gap-2">
+                      <input 
+                        type="number" 
+                        placeholder="Monto $"
+                        value={montoAbono[n.id] || ''}
+                        onChange={(e) => setMontoAbono({...montoAbono, [n.id]: e.target.value})}
+                        className="flex-1 bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm font-bold outline-none focus:ring-2 focus:ring-orange-100"
+                      />
+                      <button 
+                        disabled={procesando}
+                        onClick={() => handleAbono(n.id, n.abonos_hoy, parseInt(montoAbono[n.id]))}
+                        className="bg-emerald-500 hover:bg-emerald-600 text-white px-6 py-3 rounded-xl font-black text-xs uppercase tracking-widest shadow-lg shadow-emerald-100 disabled:opacity-50"
+                      >
+                        Abonar
+                      </button>
+                    </div>
+
+                    <div className="flex gap-2">
+                      <button 
+                        disabled={procesando}
+                        onClick={() => handleAgregarDia(n.id, n.dias_totales)}
+                        className="flex-1 bg-gray-900 text-white py-3 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-black transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                      >
+                        <Calendar size={14} /> Extender
+                      </button>
+                      <button 
+                        disabled={procesando}
+                        onClick={() => handleDesactivar(n.id, n.activo)}
+                        className={`p-3 rounded-xl transition-all disabled:opacity-50 ${n.activo ? 'bg-orange-50 text-orange-600 hover:bg-orange-600 hover:text-white' : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-600 hover:text-white'}`}
+                      >
+                        <Power size={20} />
+                      </button>
+                    </div>
+                    <button 
+                      onClick={() => generarPDFInformal(n, tarifaGlobal)}
+                      className="w-full bg-blue-50 text-blue-600 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-blue-600 hover:text-white transition-all flex items-center justify-center gap-2"
+                    >
+                      <FileText size={14} /> Generar Extracto PDF
+                    </button>
+                  </div>
+                </div>
+              </motion.div>
+            ))
+          )}
+        </AnimatePresence>
+      </div>
+
+      {/* MODAL DE REGISTRO */}
+      <AnimatePresence>
+        {mostrarForm && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md">
+            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-white rounded-[3rem] w-full max-w-xl overflow-hidden shadow-2xl">
+              <div className="bg-orange-600 p-10 text-white relative">
+                <h3 className="text-3xl font-black uppercase tracking-tighter">Nuevo Puesto</h3>
+                <p className="text-orange-100 font-medium">Registra un nuevo negocio informal</p>
+                <button onClick={() => setMostrarForm(false)} className="absolute top-10 right-10 hover:rotate-90 transition-transform"><X size={28}/></button>
               </div>
-            </div>
+              <form onSubmit={handleRegistro} className="p-10 space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div>
+                    <label className="text-[10px] font-black text-gray-400 uppercase ml-2 mb-2 block tracking-widest">Nombre del Dueño</label>
+                    <input required value={form.nombre_cliente} onChange={e => setForm({...form, nombre_cliente: e.target.value})} className="w-full bg-gray-50 border border-gray-200 rounded-2xl p-4 font-bold outline-none focus:ring-4 focus:ring-orange-100"/>
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-black text-gray-400 uppercase ml-2 mb-2 block tracking-widest">Nombre Negocio</label>
+                    <input required value={form.nombre_negocio} onChange={e => setForm({...form, nombre_negocio: e.target.value})} className="w-full bg-gray-50 border border-gray-200 rounded-2xl p-4 font-bold outline-none focus:ring-4 focus:ring-orange-100"/>
+                  </div>
+                </div>
+                <div className="space-y-6">
+                  <div>
+                    <label className="text-[10px] font-black text-gray-400 uppercase ml-2 mb-2 block tracking-widest">Celular de Contacto</label>
+                    <input type="tel" required value={form.celular} onChange={e => setForm({...form, celular: e.target.value})} className="w-full bg-gray-50 border border-gray-200 rounded-2xl p-4 font-bold outline-none focus:ring-4 focus:ring-orange-100" placeholder="Ej: 300 123 4567"/>
+                  </div>
+                  <div className="bg-orange-50 p-6 rounded-2xl border border-orange-100">
+                    <div className="flex justify-between items-center">
+                      <p className="text-[10px] font-black text-orange-600 uppercase tracking-widest">Tarifa Diaria de Guardado</p>
+                      <p className="text-xl font-black text-orange-700">${tarifaGlobal.toLocaleString()}</p>
+                    </div>
+                  </div>
+                </div>
+                <button 
+                  disabled={procesando}
+                  className="w-full bg-orange-600 text-white font-black py-5 rounded-[1.5rem] shadow-2xl hover:bg-orange-700 transition-all active:scale-95 text-lg uppercase tracking-widest disabled:opacity-50"
+                >
+                  Confirmar Registro
+                </button>
+              </form>
+            </motion.div>
           </div>
         )}
-      </motion.div>
-    </motion.div>
+      </AnimatePresence>
+    </div>
   );
 };
+
+const X = ({ size }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M18 6 6 18M6 6l12 12" />
+  </svg>
+);
 
 export default ModuloInformales;

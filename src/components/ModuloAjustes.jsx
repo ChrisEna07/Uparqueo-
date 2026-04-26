@@ -1,7 +1,8 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { getTarifas, updateTarifa } from '../services/parqueoService';
-import { Settings, Save, Info, DollarSign, Clock, TrendingUp, AlertCircle, CheckCircle, Edit2, Car, Bike, Store } from 'lucide-react';
+import { supabase } from '../lib/supabase';
+import { getTarifas, updateTarifa, updateDevKey } from '../services/parqueoService';
+import { Settings, Save, Info, DollarSign, Clock, TrendingUp, AlertCircle, CheckCircle, Edit2, Car, Bike, Store, Key } from 'lucide-react';
 import Swal from 'sweetalert2';
 
 const ModuloAjustes = ({ onActionSuccess, onDevToolsClick }) => {
@@ -17,7 +18,9 @@ const ModuloAjustes = ({ onActionSuccess, onDevToolsClick }) => {
   const cargar = async () => {
     setCargando(true);
     const data = await getTarifas();
-    setTarifas(data);
+    // Filtramos dev_key para que no aparezca en la lista de tarifas
+    const filtradas = data.filter(t => t.tipo_vehiculo !== 'dev_key');
+    setTarifas(filtradas);
     setCargando(false);
   };
 
@@ -176,7 +179,52 @@ const ModuloAjustes = ({ onActionSuccess, onDevToolsClick }) => {
         confirmButtonColor: '#EF4444',
         confirmButtonText: 'Cerrar'
       });
-      return false;
+    }
+  };
+
+  const handleChangeDevKey = async () => {
+    const { value: claveActual } = await Swal.fire({
+      title: 'Validar Acceso',
+      text: 'Ingrese la clave de desarrollador actual:',
+      input: 'password',
+      inputPlaceholder: 'Clave actual...',
+      showCancelButton: true,
+      confirmButtonText: 'Validar',
+      confirmButtonColor: '#4F46E5'
+    });
+
+    if (!claveActual) return;
+
+    try {
+      const { data } = await supabase
+        .from('configuracion')
+        .select('valor_texto')
+        .eq('tipo_vehiculo', 'dev_key')
+        .maybeSingle();
+      
+      const realKey = (data && data.valor_texto) || 'ChrizDev07';
+
+      if (claveActual !== realKey) {
+        return Swal.fire('Error', 'La clave actual es incorrecta', 'error');
+      }
+
+      const { value: nuevaClave } = await Swal.fire({
+        title: 'Nueva Clave',
+        text: 'Ingrese la nueva clave de desarrollador:',
+        input: 'text',
+        inputPlaceholder: 'Nueva clave...',
+        showCancelButton: true,
+        confirmButtonText: 'Actualizar',
+        confirmButtonColor: '#10B981'
+      });
+
+      if (nuevaClave) {
+        await updateDevKey(nuevaClave);
+        Swal.fire('¡Éxito!', 'La clave ha sido actualizada.', 'success');
+        if (onActionSuccess) onActionSuccess('Clave de desarrollador actualizada');
+      }
+    } catch (e) {
+      Swal.fire('Error', e.message, 'error');
     }
   };
 
@@ -185,6 +233,7 @@ const ModuloAjustes = ({ onActionSuccess, onDevToolsClick }) => {
       case 'carro': return 'Automóviles';
       case 'moto': return 'Motocicletas';
       case 'informal': return 'Negocios Informales';
+      case 'limite_dias_informal': return 'Límite de Días (Informales)';
       default: return tipo;
     }
   };
@@ -194,6 +243,7 @@ const ModuloAjustes = ({ onActionSuccess, onDevToolsClick }) => {
       case 'carro': return <Car className="text-blue-500" size={28} />;
       case 'moto': return <Bike className="text-orange-500" size={28} />;
       case 'informal': return <Store className="text-purple-500" size={28} />;
+      case 'limite_dias_informal': return <AlertCircle className="text-red-500" size={28} />;
       default: return <Settings size={28} />;
     }
   };
@@ -208,6 +258,7 @@ const ModuloAjustes = ({ onActionSuccess, onDevToolsClick }) => {
       case 'carro': return 'from-blue-500 to-blue-600';
       case 'moto': return 'from-orange-500 to-orange-600';
       case 'informal': return 'from-purple-500 to-purple-600';
+      case 'limite_dias_informal': return 'from-red-500 to-red-600';
       default: return 'from-gray-500 to-gray-600';
     }
   };
@@ -348,7 +399,7 @@ const ModuloAjustes = ({ onActionSuccess, onDevToolsClick }) => {
                   {editando === t.id ? (
                     <div className="flex items-center gap-3">
                       <div className="bg-white rounded-lg p-2 flex items-center">
-                        <span className="text-gray-600 font-bold text-xl mr-2">$</span>
+                        {t.tipo_vehiculo !== 'limite_dias_informal' && <span className="text-gray-600 font-bold text-xl mr-2">$</span>}
                         <input 
                           type="number" 
                           value={valorEdit}
@@ -357,7 +408,7 @@ const ModuloAjustes = ({ onActionSuccess, onDevToolsClick }) => {
                           autoFocus
                         />
                         <span className="text-gray-500 ml-2 font-medium">
-                          {t.tipo_vehiculo === 'informal' ? '/día' : '/hora'}
+                          {t.tipo_vehiculo === 'informal' ? '/día' : t.tipo_vehiculo === 'limite_dias_informal' ? ' días' : '/hora'}
                         </span>
                       </div>
                       <button
@@ -377,12 +428,12 @@ const ModuloAjustes = ({ onActionSuccess, onDevToolsClick }) => {
                     <div className="flex items-center gap-4">
                       <div className="bg-white/20 backdrop-blur-sm rounded-xl px-6 py-3">
                         <div className="flex items-baseline gap-2">
-                          <span className="text-white/80 text-lg">$</span>
+                          {t.tipo_vehiculo !== 'limite_dias_informal' && <span className="text-white/80 text-lg">$</span>}
                           <span className="text-4xl font-black text-white">
                             {t.valor_fraccion.toLocaleString()}
                           </span>
                           <span className="text-white/80 text-sm ml-1">
-                            {t.tipo_vehiculo === 'informal' ? '/día' : '/hora'}
+                            {t.tipo_vehiculo === 'informal' ? '/día' : t.tipo_vehiculo === 'limite_dias_informal' ? ' días' : '/hora'}
                           </span>
                         </div>
                       </div>
@@ -431,6 +482,16 @@ const ModuloAjustes = ({ onActionSuccess, onDevToolsClick }) => {
           </div>
         </div>
       </motion.div>
+
+      {/* Botón de Clave Desarrollador */}
+      <div className="mt-6 flex justify-center">
+        <button
+          onClick={handleChangeDevKey}
+          className="flex items-center gap-2 text-gray-400 hover:text-indigo-400 text-xs transition-colors bg-gray-800/30 px-4 py-2 rounded-full border border-gray-700/50"
+        >
+          <Key size={14} /> Cambiar Clave de Desarrollador
+        </button>
+      </div>
 
       {/* Footer con detector de clics para modo desarrollador */}
       <motion.div 

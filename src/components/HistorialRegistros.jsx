@@ -15,6 +15,7 @@ import {
   TrendingUp
 } from 'lucide-react';
 import Swal from 'sweetalert2';
+import { generatePDFReport } from '../utils/pdfGenerator';
 
 const HistorialRegistros = ({ onClose }) => {
   const [registros, setRegistros] = useState([]);
@@ -106,13 +107,70 @@ const HistorialRegistros = ({ onClose }) => {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    
     Swal.fire({
       title: 'Exportado',
       text: 'El archivo CSV se ha descargado correctamente',
       icon: 'success',
       timer: 2000,
       showConfirmButton: false
+    });
+  };
+
+  const exportarPDFFiltrado = () => {
+    if (registrosFiltrados.length === 0) {
+      Swal.fire('Sin datos', 'No hay registros para exportar', 'warning');
+      return;
+    }
+
+    const columns = [
+      { header: 'Placa', dataKey: 'placa' },
+      { header: 'Cliente', dataKey: 'cliente' },
+      { header: 'Entrada', dataKey: 'entrada' },
+      { header: 'Salida', dataKey: 'salida' },
+      { header: 'Total', dataKey: 'total' },
+      { header: 'Estado', dataKey: 'estado' }
+    ];
+
+    const data = registrosFiltrados.map(reg => ({
+      placa: reg.placa,
+      cliente: reg.cliente_nombre || '---',
+      entrada: new Date(reg.entrada).toLocaleString(),
+      salida: reg.salida ? new Date(reg.salida).toLocaleString() : 'En parqueo',
+      total: reg.total_pagar ? `$${reg.total_pagar.toLocaleString()}` : '---',
+      estado: reg.estado === 'activo' ? 'Activo' : 'Finalizado'
+    }));
+
+    generatePDFReport({
+      title: 'Historial de Parqueadero',
+      subtitle: `Reporte de Registros (${registrosFiltrados.length})`,
+      columns,
+      data,
+      filename: `historial_parqueadero_${new Date().toISOString().slice(0,10)}.pdf`
+    });
+  };
+
+  const exportarPDFIndividual = (reg) => {
+    const columns = [
+      { header: 'Concepto', dataKey: 'concepto' },
+      { header: 'Detalle', dataKey: 'detalle' }
+    ];
+
+    const data = [
+      { concepto: 'Placa', detalle: reg.placa },
+      { concepto: 'Cliente', detalle: reg.cliente_nombre || 'Cliente ocasional' },
+      { concepto: 'Tipo Vehículo', detalle: reg.tipo_vehiculo === 'carro' ? 'Automóvil' : 'Motocicleta' },
+      { concepto: 'Fecha Entrada', detalle: new Date(reg.entrada).toLocaleString() },
+      { concepto: 'Fecha Salida', detalle: reg.salida ? new Date(reg.salida).toLocaleString() : 'En parqueadero' },
+      { concepto: 'Estado', detalle: reg.estado === 'activo' ? 'Activo' : 'Finalizado' },
+      { concepto: 'Total Pagado', detalle: reg.total_pagar ? `$${reg.total_pagar.toLocaleString()}` : 'Pendiente' }
+    ];
+
+    generatePDFReport({
+      title: 'Ticket / Recibo de Parqueadero',
+      subtitle: `Placa: ${reg.placa} - Cliente: ${reg.cliente_nombre || 'Ocasional'}`,
+      columns,
+      data,
+      filename: `recibo_parqueo_${reg.placa}.pdf`
     });
   };
 
@@ -302,10 +360,19 @@ const HistorialRegistros = ({ onClose }) => {
             </button>
             <button
               onClick={exportarCSV}
-              className="ml-auto bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-all flex items-center gap-2"
+              className="ml-auto bg-green-600 text-white px-3 py-2 rounded-lg hover:bg-green-700 transition-all flex items-center gap-2 text-sm"
+              title="Exportar a Excel/CSV"
             >
-              <Download size={18} />
-              Exportar CSV
+              <Download size={16} />
+              CSV
+            </button>
+            <button
+              onClick={exportarPDFFiltrado}
+              className="bg-indigo-600 text-white px-3 py-2 rounded-lg hover:bg-indigo-700 transition-all flex items-center gap-2 text-sm"
+              title="Exportar lista a PDF"
+            >
+              <Download size={16} />
+              PDF
             </button>
           </div>
         </div>
@@ -365,13 +432,22 @@ const HistorialRegistros = ({ onClose }) => {
                         </span>
                       </td>
                       <td className="p-3 text-center">
-                        <button
-                          onClick={() => verDetalle(reg)}
-                          className="text-blue-400 hover:text-blue-300 transition-colors"
-                          title="Ver detalles"
-                        >
-                          <Eye size={18} />
-                        </button>
+                        <div className="flex justify-center items-center gap-2">
+                          <button
+                            onClick={() => verDetalle(reg)}
+                            className="text-blue-400 hover:text-blue-300 transition-colors"
+                            title="Ver detalles"
+                          >
+                            <Eye size={18} />
+                          </button>
+                          <button
+                            onClick={() => exportarPDFIndividual(reg)}
+                            className="text-indigo-400 hover:text-indigo-300 transition-colors"
+                            title="Descargar PDF"
+                          >
+                            <Download size={18} />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}

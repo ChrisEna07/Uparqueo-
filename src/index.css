@@ -464,3 +464,11 @@ input[type="number"]::-webkit-outer-spin-button {
 .w-full {
   width: 100% !important;
 }
+/* Utility to hide scrollbar but keep functionality */
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}

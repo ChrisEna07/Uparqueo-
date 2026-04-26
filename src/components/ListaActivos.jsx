@@ -1,43 +1,115 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { supabase } from '../lib/supabase';
-import { calcularCobro, registrarSalida } from '../services/parqueoService';
-import { Car, Bike, Clock, Receipt, Search, DollarSign, TrendingUp, AlertCircle, X, History } from 'lucide-react';
+import { 
+  Car, Clock, Search, ExternalLink, 
+  Trash2, DollarSign, AlertCircle, RefreshCw,
+  Filter, Calendar, Hash, FileText, Info,
+  ShieldAlert, UserX
+} from 'lucide-react';
+import { 
+  getRegistrosActivos, 
+  calcularCobro, 
+  registrarSalida, 
+  eliminarVehiculo,
+  getHistorialCliente,
+  addToBlacklist,
+  getTarifas
+} from '../services/parqueoService';
+import { generarPDFHistorialCliente } from '../services/pdfService';
 import Swal from 'sweetalert2';
-import HistorialRegistros from './HistorialRegistros';
 
-const ListaActivos = ({ refreshKey, onVehiculoSalida }) => {
+const ListaActivos = ({ onVehiculoSalida, refreshKey }) => {
   const [vehiculos, setVehiculos] = useState([]);
   const [cargando, setCargando] = useState(true);
-  const [filtro, setFiltro] = useState('');
-  const [tipoFiltro, setTipoFiltro] = useState('todos');
-  const [mostrarHistorial, setMostrarHistorial] = useState(false);
-  const [estadisticas, setEstadisticas] = useState({ total: 0, carros: 0, motos: 0 });
-
-  const cargarVehiculos = async () => {
-    setCargando(true);
-    const { data, error } = await supabase
-      .from('registros_parqueadero')
-      .select('*')
-      .eq('estado', 'activo')
-      .order('entrada', { ascending: false });
-
-    if (!error) {
-      setVehiculos(data);
-      const carros = data.filter(v => v.tipo_vehiculo === 'carro').length;
-      const motos = data.filter(v => v.tipo_vehiculo === 'moto').length;
-      setEstadisticas({
-        total: data.length,
-        carros: carros,
-        motos: motos
-      });
-    }
-    setCargando(false);
-  };
+  const [procesando, setProcesando] = useState(false);
+  const [busqueda, setBusqueda] = useState('');
+  const [filtroTipo, setFiltroTipo] = useState('todos');
+  const [tarifas, setTarifas] = useState({});
+  const [currentTime, setCurrentTime] = useState(new Date());
+  const [clienteSel, setClienteSel] = useState(null);
 
   useEffect(() => {
-    cargarVehiculos();
+    cargarDatos();
+    const timer = setInterval(() => setCurrentTime(new Date()), 60000);
+    return () => clearInterval(timer);
   }, [refreshKey]);
+
+  const cargarDatos = async () => {
+    setCargando(true);
+    try {
+      const [vRes, tRes] = await Promise.all([getRegistrosActivos(), getTarifas()]);
+      
+      if (vRes.success) setVehiculos(vRes.data);
+      
+      const tMap = {};
+      tRes.forEach(t => tMap[t.tipo_vehiculo] = t.valor_fraccion);
+      setTarifas(tMap);
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setCargando(false);
+    }
+  };
+
+  const calcularTiempoReal = (entradaStr, tipo) => {
+    const entrada = new Date(entradaStr);
+    const diffMs = currentTime - entrada;
+    const minutos = Math.max(1, Math.ceil(diffMs / (1000 * 60)));
+    const unidades = Math.ceil(minutos / 60);
+    const valorFraccion = tarifas[tipo] || 0;
+    const total = unidades * valorFraccion;
+
+    const h = Math.floor(minutos / 60);
+    const m = minutos % 60;
+
+    return { 
+      tiempo: `${h}h ${m}m`, 
+      total,
+      unidades
+    };
+  };
+
+  const verDetallesCliente = async (placa) => {
+    setProcesando(true);
+    const res = await getHistorialCliente(placa);
+    if (res.success) {
+      setClienteSel({
+        placa,
+        historial: res.data,
+        resumen: res.resumen
+      });
+    }
+    setProcesando(false);
+  };
+
+  const handleNoPago = async (id, placa) => {
+    const { value: motivo } = await Swal.fire({
+      title: 'REGISTRAR NO PAGO',
+      text: `El vehículo ${placa} será enviado a la LISTA NEGRA y no podrá ingresar nuevamente.`,
+      input: 'textarea',
+      inputPlaceholder: 'Escribe el motivo del no pago o incidente...',
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#EF4444',
+      confirmButtonText: 'SÍ, LISTA NEGRA',
+      cancelButtonText: 'Cancelar'
+    });
+
+    if (motivo) {
+      setProcesando(true);
+      try {
+        await addToBlacklist(placa, motivo, 'ADMIN_SESSION'); // En producción usar ID real del admin
+        await registrarSalida(id, 0); // Cerramos el registro con $0
+        await Swal.fire('Bloqueado', 'Cliente agregado a lista negra con éxito.', 'success');
+        cargarDatos();
+        if (onVehiculoSalida) onVehiculoSalida();
+      } catch (err) {
+        Swal.fire('Error', err.message, 'error');
+      } finally {
+        setProcesando(false);
+      }
+    }
+  };
 
   const handleCobrar = async (id, placa, tipoVehiculo) => {
     try {
@@ -53,320 +125,251 @@ const ListaActivos = ({ refreshKey, onVehiculoSalida }) => {
               <p class="text-sm text-gray-500">${tipoVehiculo === 'carro' ? '🚗 Automóvil' : '🏍️ Motocicleta'}</p>
             </div>
             <div class="space-y-2">
-              <div class="flex justify-between items-center">
-                <span class="text-gray-600">Tiempo estacionado:</span>
-                <span class="font-semibold">${minutos} minutos</span>
+              <div class="flex justify-between">
+                <span>Tiempo:</span>
+                <span>${minutos} min</span>
               </div>
-              <div class="flex justify-between items-center">
-                <span class="text-gray-600">Fracciones (${unidades}):</span>
-                <span class="font-semibold">${unidades} × $${valorFraccion.toLocaleString()}</span>
+              <div class="flex justify-between">
+                <span>Fracciones:</span>
+                <span>${unidades} × $${valorFraccion.toLocaleString()}</span>
               </div>
-              <div class="border-t pt-2 mt-2">
-                <div class="flex justify-between items-center">
-                  <span class="text-lg font-bold text-gray-800">Total a pagar:</span>
-                  <span class="text-2xl font-bold text-green-600">$${total.toLocaleString()}</span>
-                </div>
+              <div class="border-t pt-2 mt-2 flex justify-between">
+                <span class="font-bold">Total:</span>
+                <span class="text-green-600 font-bold">$${total.toLocaleString()}</span>
               </div>
             </div>
           </div>
         `,
         icon: 'question',
         showCancelButton: true,
+        confirmButtonText: '✅ Cobrar',
         confirmButtonColor: '#10B981',
-        cancelButtonColor: '#6B7280',
-        confirmButtonText: '✅ Confirmar Cobro',
-        cancelButtonText: '❌ Cancelar',
-        backdrop: true,
-        allowOutsideClick: false
+        cancelButtonColor: '#6B7280'
       });
 
       if (result.isConfirmed) {
+        setProcesando(true);
         await registrarSalida(id, total);
-        
-        await Swal.fire({
-          title: '¡Cobro Exitoso!',
-          html: `
-            <div class="text-center">
-              <div class="text-6xl mb-4">💰</div>
-              <p class="text-lg mb-2">Se ha registrado la salida del vehículo</p>
-              <p class="text-2xl font-bold text-green-600">$${total.toLocaleString()}</p>
-              <p class="text-sm text-gray-500 mt-2">Placa: ${placa}</p>
-            </div>
-          `,
-          icon: 'success',
-          confirmButtonColor: '#10B981',
-          confirmButtonText: 'Aceptar',
-          timer: 3000,
-          timerProgressBar: true
-        });
-        
-        cargarVehiculos();
+        await Swal.fire('¡Cobro Exitoso!', `Total: $${total.toLocaleString()}`, 'success');
+        cargarDatos();
         if (onVehiculoSalida) onVehiculoSalida();
       }
     } catch (error) {
-      await Swal.fire({
-        title: 'Error',
-        text: error.message || 'Error al procesar el cobro',
-        icon: 'error',
-        confirmButtonColor: '#EF4444',
-        confirmButtonText: 'Cerrar'
-      });
+      Swal.fire('Error', error.message, 'error');
+    } finally {
+      setProcesando(false);
+    }
+  };
+
+  const handleEliminar = async (id, placa) => {
+    const result = await Swal.fire({
+      title: '¿Eliminar registro?',
+      text: `Se borrará el ingreso de ${placa} sin generar cobro.`,
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#EF4444',
+      confirmButtonText: 'Sí, eliminar'
+    });
+
+    if (result.isConfirmed) {
+      const res = await eliminarVehiculo(id);
+      if (res.success) {
+        Swal.fire('Eliminado', '', 'success');
+        cargarDatos();
+      }
     }
   };
 
   const vehiculosFiltrados = vehiculos.filter(v => {
-    const matchPlaca = v.placa.toLowerCase().includes(filtro.toLowerCase());
-    const matchTipo = tipoFiltro === 'todos' || v.tipo_vehiculo === tipoFiltro;
-    return matchPlaca && matchTipo;
+    const coincideBusqueda = v.placa.toLowerCase().includes(busqueda.toLowerCase());
+    const coincideTipo = filtroTipo === 'todos' || v.tipo_vehiculo === filtroTipo;
+    return coincideBusqueda && coincideTipo;
   });
 
-  if (cargando) {
-    return (
-      <motion.div 
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        className="bg-white rounded-xl shadow-lg p-12"
-      >
-        <div className="flex flex-col items-center justify-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
-          <p className="text-gray-500">Cargando vehículos activos...</p>
-        </div>
-      </motion.div>
-    );
-  }
-
   return (
-    <>
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5 }}
-        className="bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-visible w-full"
-      >
-        {/* Header */}
-        <div className="bg-gradient-to-r from-gray-800 to-gray-900 p-6 rounded-t-2xl">
-          <div className="flex flex-col lg:flex-row justify-between items-start gap-4">
-            <div className="flex-shrink-0">
-              <h2 className="text-white font-bold flex items-center gap-2 text-xl">
-                <Clock className="animate-pulse" size={24} />
-                Vehículos en el Parqueadero
-                <span className="bg-blue-500 text-white px-2 py-1 rounded-lg text-sm ml-2">
-                  {estadisticas.total}
-                </span>
-              </h2>
-              <p className="text-gray-300 text-sm mt-1">Gestión de vehículos activos</p>
-            </div>
-            
-            <button
-              onClick={() => setMostrarHistorial(true)}
-              className="bg-white/20 hover:bg-white/30 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-all flex-shrink-0"
+    <div className="space-y-6">
+      <div className="flex flex-col md:flex-row gap-4 bg-white p-4 md:p-6 rounded-[2rem] md:rounded-[2.5rem] shadow-sm border border-gray-100">
+        <div className="flex-1 flex items-center gap-3 bg-gray-50 border border-gray-100 rounded-2xl px-5 py-3 md:py-4 focus-within:ring-4 focus-within:ring-blue-100 transition-all">
+          <Search className="text-gray-400 shrink-0" size={20} />
+          <input 
+            type="text" 
+            placeholder="Buscar por placa..." 
+            value={busqueda}
+            onChange={(e) => setBusqueda(e.target.value)}
+            className="w-full bg-transparent border-none outline-none font-bold text-gray-700 placeholder-gray-400"
+          />
+        </div>
+        
+        <div className="flex gap-2 overflow-x-auto pb-2 md:pb-0 scrollbar-hide">
+          {['todos', 'carro', 'moto'].map(tipo => (
+            <button 
+              key={tipo}
+              onClick={() => setFiltroTipo(tipo)}
+              className={`px-6 md:px-8 py-3 md:py-4 rounded-xl md:rounded-2xl font-black text-[10px] md:text-xs transition-all uppercase whitespace-nowrap ${filtroTipo === tipo ? 'bg-blue-600 text-white shadow-xl shadow-blue-100' : 'bg-gray-50 text-gray-400 hover:text-gray-600'}`}
             >
-              <History size={18} />
-              Historial
+              {tipo === 'todos' ? 'TODOS' : tipo === 'carro' ? 'CARROS' : 'MOTOS'}
             </button>
-            
-            <div className="flex flex-wrap gap-3">
-              <div className="bg-blue-500/20 backdrop-blur-sm rounded-lg px-3 py-2 md:px-4 md:py-2">
-                <div className="flex items-center gap-2">
-                  <Car size={16} className="text-blue-400" />
-                  <span className="text-white font-bold text-sm md:text-base">{estadisticas.carros}</span>
-                  <span className="text-gray-300 text-xs">Carros</span>
-                </div>
-              </div>
-              <div className="bg-orange-500/20 backdrop-blur-sm rounded-lg px-3 py-2 md:px-4 md:py-2">
-                <div className="flex items-center gap-2">
-                  <Bike size={16} className="text-orange-400" />
-                  <span className="text-white font-bold text-sm md:text-base">{estadisticas.motos}</span>
-                  <span className="text-gray-300 text-xs">Motos</span>
-                </div>
-              </div>
-              <div className="bg-green-500/20 backdrop-blur-sm rounded-lg px-3 py-2 md:px-4 md:py-2">
-                <div className="flex items-center gap-2">
-                  <TrendingUp size={16} className="text-green-400" />
-                  <span className="text-white font-bold text-sm md:text-base">
-                    ${(estadisticas.carros * 2000 + estadisticas.motos * 1000).toLocaleString()}
-                  </span>
-                  <span className="text-gray-300 text-xs">Potencial</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Filtros - Usando clases globales */}
-          <div className="mt-4 flex flex-col sm:flex-row gap-3">
-            <div className="flex-1 input-icon-container">
-              <div className="input-icon">
-                <Search size={18} />
-              </div>
-              <input
-                type="text"
-                placeholder="Buscar por placa..."
-                value={filtro}
-                onChange={(e) => setFiltro(e.target.value)}
-                className="input-with-icon"
-              />
-            </div>
-            <div className="flex gap-2 flex-wrap">
-              <button
-                onClick={() => setTipoFiltro('todos')}
-                className={`px-3 py-2 md:px-4 rounded-lg transition-all whitespace-nowrap ${
-                  tipoFiltro === 'todos' 
-                    ? 'bg-blue-600 text-white shadow-lg' 
-                    : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                }`}
-              >
-                Todos
-              </button>
-              <button
-                onClick={() => setTipoFiltro('carro')}
-                className={`px-3 py-2 md:px-4 rounded-lg transition-all flex items-center gap-2 whitespace-nowrap ${
-                  tipoFiltro === 'carro' 
-                    ? 'bg-blue-600 text-white shadow-lg' 
-                    : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                }`}
-              >
-                <Car size={16} /> Carros
-              </button>
-              <button
-                onClick={() => setTipoFiltro('moto')}
-                className={`px-3 py-2 md:px-4 rounded-lg transition-all flex items-center gap-2 whitespace-nowrap ${
-                  tipoFiltro === 'moto' 
-                    ? 'bg-orange-600 text-white shadow-lg' 
-                    : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                }`}
-              >
-                <Bike size={16} /> Motos
-              </button>
-            </div>
-          </div>
+          ))}
         </div>
+      </div>
 
-        {/* Tabla de vehículos */}
-        <div className="p-0 w-full">
-          <AnimatePresence>
-            {vehiculosFiltrados.length === 0 ? (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="p-12 text-center"
-              >
-                <AlertCircle className="mx-auto text-gray-400 mb-3" size={48} />
-                <p className="text-gray-500 text-lg">No hay vehículos que coincidan con los filtros</p>
-                {(filtro || tipoFiltro !== 'todos') && (
-                  <button
-                    onClick={() => { setFiltro(''); setTipoFiltro('todos'); }}
-                    className="mt-3 text-blue-600 hover:text-blue-700 text-sm flex items-center gap-1 justify-center"
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+        <AnimatePresence>
+          {cargando ? (
+            <div className="col-span-full py-20 text-center text-gray-300 font-black animate-pulse uppercase tracking-[0.4em]">Sincronizando...</div>
+          ) : vehiculosFiltrados.length === 0 ? (
+            <div className="col-span-full py-20 text-center bg-white rounded-[3rem] border-2 border-dashed border-gray-100">
+              <Car size={48} className="mx-auto text-gray-200 mb-4" />
+              <p className="text-gray-400 font-bold uppercase tracking-widest text-xs">Sin vehículos en el radar</p>
+            </div>
+          ) : (
+            vehiculosFiltrados.map((v) => {
+              const infoReal = calcularTiempoReal(v.entrada, v.tipo_vehiculo);
+              return (
+                <motion.div 
+                  layout initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
+                  key={v.id}
+                  className="bg-white rounded-[2rem] md:rounded-[3rem] p-6 md:p-10 shadow-2xl hover:shadow-blue-900/5 transition-all border border-gray-50 group relative overflow-hidden"
+                >
+                  <div className={`absolute top-0 right-0 w-32 h-32 -mr-16 -mt-16 rounded-full opacity-5 ${v.tipo_vehiculo === 'carro' ? 'bg-blue-600' : 'bg-orange-600'}`}></div>
+
+                  <div className="flex justify-between items-start mb-8 relative">
+                    <div className={`p-5 rounded-3xl ${v.tipo_vehiculo === 'carro' ? 'bg-blue-50 text-blue-600' : 'bg-orange-50 text-orange-600'}`}>
+                      {v.tipo_vehiculo === 'carro' ? <Car size={32} /> : <Car size={32} className="rotate-12" />}
+                    </div>
+                    <button 
+                      onClick={() => verDetallesCliente(v.placa)}
+                      className="p-3 bg-gray-50 text-gray-400 hover:bg-gray-900 hover:text-white rounded-2xl transition-all"
+                    >
+                      <Info size={20} />
+                    </button>
+                  </div>
+
+                  <div className="mb-8">
+                    <h3 className="text-5xl font-black text-gray-900 tracking-tighter mb-2 uppercase">{v.placa}</h3>
+                    <div className="flex items-center gap-3">
+                      <span className="px-3 py-1 bg-gray-100 rounded-full text-[10px] font-black text-gray-500 uppercase tracking-widest">
+                        {v.tipo_vehiculo === 'carro' ? 'Automóvil' : 'Motocicleta'}
+                      </span>
+                      {v.cliente_nombre && (
+                        <span className="text-xs text-blue-500 font-bold">👤 {v.cliente_nombre}</span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4 mb-8">
+                    <div className="bg-gray-50 p-5 rounded-[2rem]">
+                      <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Transcurrido</p>
+                      <p className="text-xl font-black text-gray-800 flex items-center gap-2">
+                        <Clock size={16} className="text-blue-500" /> {infoReal.tiempo}
+                      </p>
+                    </div>
+                    <div className="bg-blue-50/50 p-5 rounded-[2rem] border border-blue-100/50">
+                      <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-1">Costo Actual</p>
+                      <p className="text-xl font-black text-blue-600">
+                        ${infoReal.total.toLocaleString()}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col gap-3">
+                    <button 
+                      disabled={procesando} onClick={() => handleCobrar(v.id, v.placa, v.tipo_vehiculo)}
+                      className="w-full bg-emerald-500 hover:bg-emerald-600 text-white py-5 rounded-[1.5rem] font-black text-xs uppercase tracking-[0.2em] shadow-xl shadow-emerald-100 transition-all flex items-center justify-center gap-2 active:scale-95 disabled:opacity-50"
+                    >
+                      <DollarSign size={20} /> REGISTRAR PAGO
+                    </button>
+                    <div className="flex gap-2">
+                      <button 
+                        disabled={procesando} onClick={() => handleNoPago(v.id, v.placa)}
+                        className="flex-1 bg-red-50 text-red-500 hover:bg-red-600 hover:text-white py-4 rounded-[1.2rem] font-black text-[10px] uppercase tracking-widest transition-all flex items-center justify-center gap-2"
+                      >
+                        <UserX size={16} /> NO PAGO
+                      </button>
+                      <button 
+                        disabled={procesando} onClick={() => handleEliminar(v.id, v.placa)}
+                        className="p-4 bg-gray-50 text-gray-300 hover:bg-gray-200 hover:text-gray-600 rounded-[1.2rem] transition-all"
+                      >
+                        <Trash2 size={20} />
+                      </button>
+                    </div>
+                  </div>
+                </motion.div>
+              );
+            })
+          )}
+        </AnimatePresence>
+      </div>
+
+      {/* MODAL DETALLES CLIENTE */}
+      <AnimatePresence>
+        {clienteSel && (
+          <div className="fixed inset-0 z-[200] bg-black/60 backdrop-blur-xl flex items-center justify-center p-4">
+            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-white rounded-[3rem] w-full max-w-2xl overflow-hidden shadow-2xl">
+              <div className="bg-gray-900 p-10 text-white flex justify-between items-center">
+                <div>
+                  <h3 className="text-4xl font-black tracking-tighter uppercase">{clienteSel.placa}</h3>
+                  <p className="text-gray-400 font-bold uppercase text-[10px] tracking-widest mt-1">Expediente del Cliente</p>
+                </div>
+                <button onClick={() => setClienteSel(null)} className="p-3 bg-white/10 rounded-2xl hover:bg-red-500/20 transition-all text-white"><XIcon size={24}/></button>
+              </div>
+
+              <div className="p-10 space-y-8">
+                <div className="grid grid-cols-2 gap-6">
+                  <div className="bg-blue-600 p-8 rounded-[2.5rem] text-white">
+                    <p className="text-[10px] font-black uppercase tracking-widest opacity-60 mb-2">Total Aportado</p>
+                    <p className="text-3xl font-black">${clienteSel.resumen.totalPagado.toLocaleString()}</p>
+                  </div>
+                  <div className="bg-gray-100 p-8 rounded-[2.5rem] text-gray-900">
+                    <p className="text-[10px] font-black uppercase tracking-widest opacity-40 mb-2">Visitas Totales</p>
+                    <p className="text-3xl font-black">{clienteSel.resumen.visitas} <span className="text-sm opacity-40">Veces</span></p>
+                  </div>
+                </div>
+
+                <div>
+                  <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-[0.3em] mb-4">Últimos Registros</h4>
+                  <div className="space-y-3 max-h-60 overflow-y-auto custom-scrollbar pr-2">
+                    {clienteSel.historial.map((h, i) => (
+                      <div key={i} className="flex items-center justify-between p-5 bg-gray-50 rounded-2xl border border-gray-100">
+                        <div>
+                          <p className="text-sm font-black text-gray-800">{new Date(h.entrada).toLocaleDateString()}</p>
+                          <p className="text-[10px] text-gray-400 font-bold">{h.tipo_vehiculo.toUpperCase()}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-sm font-black text-emerald-600">${h.total_pagar?.toLocaleString() || '0'}</p>
+                          <span className={`text-[8px] font-black px-2 py-0.5 rounded-full uppercase ${h.estado === 'activo' ? 'bg-blue-100 text-blue-600' : 'bg-gray-200 text-gray-500'}`}>
+                            {h.estado}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex gap-4">
+                  <button 
+                    onClick={() => generarPDFHistorialCliente(clienteSel)}
+                    className="flex-1 py-5 bg-blue-600 text-white rounded-[1.5rem] font-black text-xs uppercase tracking-widest shadow-xl flex items-center justify-center gap-3 hover:bg-blue-700 transition-all"
                   >
-                    <X size={14} /> Limpiar filtros
+                    <FileText size={18} /> DESCARGAR HISTORIAL
                   </button>
-                )}
-              </motion.div>
-            ) : (
-              <div className="w-full overflow-x-auto">
-                <table className="w-full min-w-[800px]">
-                  <thead>
-                    <tr className="bg-gradient-to-r from-gray-100 to-gray-50 text-gray-700 uppercase text-xs font-bold">
-                      <th className="p-4 border-b w-[80px] text-center">Tipo</th>
-                      <th className="p-4 border-b w-[120px]">Placa</th>
-                      <th className="p-4 border-b">Cliente</th>
-                      <th className="p-4 border-b w-[180px]">Entrada</th>
-                      <th className="p-4 border-b w-[100px]">Tiempo</th>
-                      <th className="p-4 border-b w-[140px] text-center">Acción</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {vehiculosFiltrados.map((v, index) => {
-                      const tiempoTranscurrido = Math.floor((new Date() - new Date(v.entrada)) / 60000);
-                      const horas = Math.floor(tiempoTranscurrido / 60);
-                      const minutos = tiempoTranscurrido % 60;
-                      
-                      return (
-                        <motion.tr
-                          key={v.id}
-                          initial={{ opacity: 0, x: -20 }}
-                          animate={{ opacity: 1, x: 0 }}
-                          transition={{ delay: index * 0.05 }}
-                          whileHover={{ backgroundColor: '#F3F4F6' }}
-                          className="transition-all duration-300 group"
-                        >
-                          <td className="p-4 border-b text-center">
-                            {v.tipo_vehiculo === 'carro' 
-                              ? <Car className="text-blue-500 group-hover:scale-110 transition-transform inline" size={24} /> 
-                              : <Bike className="text-orange-500 group-hover:scale-110 transition-transform inline" size={24} />
-                            }
-                          </td>
-                          <td className="p-4 border-b">
-                            <span className="font-bold text-lg text-gray-800">{v.placa}</span>
-                          </td>
-                          <td className="p-4 border-b text-gray-600">
-                            {v.cliente_nombre || 'Cliente ocasional'}
-                          </td>
-                          <td className="p-4 border-b text-sm text-gray-500">
-                            {new Date(v.entrada).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                            <br />
-                            <span className="text-xs">{new Date(v.entrada).toLocaleDateString()}</span>
-                          </td>
-                          <td className="p-4 border-b">
-                            <div className="flex items-center gap-1">
-                              <Clock size={14} className="text-gray-400" />
-                              <span className="font-mono text-sm">
-                                {horas > 0 ? `${horas}h ` : ''}{minutos}min
-                              </span>
-                            </div>
-                          </td>
-                          <td className="p-4 border-b text-center">
-                            <motion.button
-                              whileHover={{ scale: 1.05 }}
-                              whileTap={{ scale: 0.95 }}
-                              onClick={() => handleCobrar(v.id, v.placa, v.tipo_vehiculo)}
-                              className="bg-gradient-to-r from-green-500 to-green-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:shadow-lg transition-all mx-auto"
-                            >
-                              <DollarSign size={16} />
-                              <span>Cobrar</span>
-                              <Receipt size={14} />
-                            </motion.button>
-                          </td>
-                        </motion.tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                  <button onClick={() => setClienteSel(null)} className="flex-1 py-5 bg-gray-100 text-gray-500 rounded-[1.5rem] font-black text-xs uppercase tracking-widest hover:bg-gray-200 transition-all">
+                    CERRAR
+                  </button>
+                </div>
               </div>
-            )}
-          </AnimatePresence>
-        </div>
-
-        {/* Footer */}
-        {vehiculosFiltrados.length > 0 && (
-          <div className="bg-gray-50 p-4 border-t rounded-b-2xl">
-            <div className="flex justify-between items-center text-sm text-gray-600">
-              <span>Mostrando {vehiculosFiltrados.length} de {vehiculos.length} vehículos</span>
-              <div className="flex gap-4">
-                <span className="flex items-center gap-1">
-                  <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                  Activos
-                </span>
-                <span className="flex items-center gap-1">
-                  <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                  Carros: {estadisticas.carros}
-                </span>
-                <span className="flex items-center gap-1">
-                  <div className="w-2 h-2 bg-orange-500 rounded-full"></div>
-                  Motos: {estadisticas.motos}
-                </span>
-              </div>
-            </div>
+            </motion.div>
           </div>
         )}
-      </motion.div>
-
-      {/* Modal de Historial */}
-      {mostrarHistorial && (
-        <HistorialRegistros onClose={() => setMostrarHistorial(false)} />
-      )}
-    </>
+      </AnimatePresence>
+    </div>
   );
 };
+
+const XIcon = ({ size }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M18 6 6 18M6 6l12 12" />
+  </svg>
+);
 
 export default ListaActivos;
