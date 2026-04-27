@@ -109,13 +109,13 @@ const Login = ({ onLoginSuccess, onDevRequest }) => {
                 transition={{ delay: 0.2, duration: 0.5 }}
                 className="text-5xl md:text-6xl font-extrabold bg-gradient-to-r from-white via-blue-300 to-purple-400 bg-clip-text text-transparent tracking-tight"
               >
-                UPARQUEO
+                ChrizDev
               </motion.h1>
               
               <div className="flex items-center justify-center gap-2 mt-3">
                 <Crown className="text-yellow-500/80" size={16} />
                 <p className="text-gray-300 text-sm uppercase tracking-wider font-medium">
-                  Sistema de Gestión
+                  Soluciones de Software Personalizadas
                 </p>
                 <Crown className="text-yellow-500/80" size={16} />
               </div>
