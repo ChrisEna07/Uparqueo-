@@ -445,19 +445,19 @@ function App() {
                 {menuAbierto ? <X size={24} /> : <Menu size={24} />}
               </button>
 
-              <div className="relative flex-shrink-0">
-                <img 
-                  src={logo} 
-                  alt="UPARQUEO Logo" 
-                  onClick={handleLogoClick}
-                  className="h-12 md:h-16 w-auto rounded-full object-cover border-3 border-white shadow-2xl cursor-pointer active:scale-90 transition-transform"
-                />
-              </div>
-              <div className="min-w-0">
-                <h1 className="text-2xl md:text-4xl lg:text-5xl font-black tracking-tight">
-                  UPARQUEO
-                  <span className="text-blue-300 ml-2 text-sm md:text-xl lg:text-2xl">by ChrizDev</span>
-                </h1>
+              <div 
+                onClick={handleLogoClick}
+                className="cursor-pointer relative z-10 flex items-center justify-center bg-gray-950/20 backdrop-blur-md border border-white/20 shadow-[0_0_20px_rgba(255,255,255,0.1)] rounded-full px-4 py-2 gap-3 transition-transform active:scale-95 hover:bg-gray-900/40"
+              >
+                <div className="bg-gradient-to-br from-blue-400 via-blue-500 to-purple-500 p-1.5 rounded-full shadow-lg">
+                  <div className="bg-white rounded-full p-1">
+                    <span className="text-blue-600 font-black text-sm italic pr-0.5 font-sans leading-none block">P</span>
+                  </div>
+                </div>
+                <div className="flex flex-col items-start justify-center pr-2">
+                  <span className="text-xl md:text-2xl font-black tracking-tighter bg-gradient-to-r from-white via-blue-50 to-gray-200 bg-clip-text text-transparent leading-none drop-shadow-md">UPARQUEO</span>
+                  <span className="text-[7px] md:text-[8px] font-black tracking-widest text-blue-200 uppercase leading-none mt-0.5 drop-shadow-md">by ChrizDev</span>
+                </div>
               </div>
             </div>
             
@@ -632,10 +632,11 @@ function App() {
             >
               <div className="p-8 bg-blue-900 text-white">
                 <div className="flex items-center gap-4 mb-6">
-                  <img 
-                    src={logo} 
-                    className="w-12 h-12 rounded-xl object-cover border-2 border-white/20"
-                  />
+                  <div className="bg-gradient-to-br from-blue-400 via-blue-500 to-purple-500 p-1 rounded-full shadow-lg flex-shrink-0">
+                    <div className="bg-white rounded-full w-10 h-10 flex items-center justify-center">
+                      <span className="text-blue-600 font-black text-lg italic pr-0.5 font-sans leading-none block">P</span>
+                    </div>
+                  </div>
                   <div>
                     <p className="text-[10px] font-black uppercase tracking-widest opacity-60">Uparqueo Admin</p>
                     <p className="text-lg font-black truncate">{admin?.nombre_completo || admin?.username}</p>

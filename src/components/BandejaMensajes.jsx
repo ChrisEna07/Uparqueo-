@@ -32,6 +32,9 @@ const BandejaMensajes = ({ admin }) => {
   const [respuesta, setRespuesta] = useState('');
   const [evidenciaUrl, setEvidenciaUrl] = useState('');
   const [imgExpandida, setImgExpandida] = useState(null);
+  const [showCameraModal, setShowCameraModal] = useState(false);
+  const videoRef = React.useRef(null);
+  const canvasRef = React.useRef(null);
 
   const esEmpleado = admin?.rol?.startsWith('empleado');
 
@@ -122,7 +125,7 @@ const BandejaMensajes = ({ admin }) => {
     const esAdminRemitente = !esEmpleado;
     const esAdminDestinatario = !dest.rol.startsWith('empleado');
 
-    if (esAdminRemitente && esAdminDestinatario && dest.id !== admin.id) {
+    if (esAdminRemitente && esAdminDestinatario && dest.id !== admin.id && tipoFinal !== 'soporte') {
       tipoFinal = 'solicitud';
       aceptadoFinal = false;
     }
@@ -163,7 +166,9 @@ const BandejaMensajes = ({ admin }) => {
         evidencia_url: evidenciaUrl,
         parent_id: chatSeleccionado.id,
         estado: 'abierto',
-        contexto: chatSeleccionado.contexto
+        contexto: chatSeleccionado.contexto,
+        tipo: 'normal',
+        aceptado: true
       }]);
 
       if (error) throw error;
@@ -179,7 +184,7 @@ const BandejaMensajes = ({ admin }) => {
   };
 
   const marcarSolucionado = async (id) => {
-    if (esEmpleado) return;
+    // Permitir a cualquier participante marcar como solucionado
     const res = await Swal.fire({
       title: '¿Solucionar Asunto?',
       text: 'Se archivará en el registro histórico.',
@@ -300,9 +305,10 @@ const BandejaMensajes = ({ admin }) => {
                   className={`p-6 border-b border-gray-50 cursor-pointer transition-all relative hover:bg-gray-50 ${chatSeleccionado?.id === m.id ? 'bg-indigo-50/50 border-r-4 border-r-indigo-600' : ''}`}
                 >
                   <div className="flex justify-between items-start mb-2">
-                    <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase ${m.tipo === 'solicitud' ? 'bg-orange-100 text-orange-600' : m.tipo === 'soporte' ? 'bg-blue-100 text-blue-600' : 'bg-gray-100 text-gray-500'}`}>
+                    <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase flex items-center gap-1 ${m.tipo === 'solicitud' ? 'bg-orange-100 text-orange-600' : m.tipo === 'soporte' ? 'bg-blue-100 text-blue-600' : 'bg-gray-100 text-gray-500'}`}>
+                      {m.tipo === 'soporte' && <Shield size={10} />}
                       {m.tipo === 'solicitud' ? 'SOLICITUD' : 
-                       m.tipo === 'soporte' ? 'SOPORTE' : 
+                       m.tipo === 'soporte' ? 'SOPORTE TÉCNICO' : 
                        m.remitente?.rol === 'ambos' ? 'Admin Master' : 
                        m.remitente?.rol === 'parqueadero' ? 'Admin Parqueo' : 
                        m.remitente?.rol === 'informales' ? 'Admin Informales' : 
@@ -311,7 +317,14 @@ const BandejaMensajes = ({ admin }) => {
                     <span className="text-[9px] text-gray-400 font-bold">{new Date(m.created_at).toLocaleDateString()}</span>
                   </div>
                   <h4 className="font-black text-gray-900 text-sm truncate">{m.asunto}</h4>
-                  <p className="text-xs text-gray-400 truncate font-medium">@{m.remitente?.username}: {m.contenido}</p>
+                  <p className="text-xs text-gray-400 truncate font-medium">
+                    {m.remitente_id === admin.id ? 'Tú' : `@${m.remitente?.username}`}: {m.contenido}
+                  </p>
+                  {m.tipo === 'soporte' && m.remitente_id === admin.id && (
+                    <div className="mt-2 text-[9px] font-black text-blue-500 uppercase tracking-widest bg-blue-50 inline-block px-2 py-1 rounded">
+                      Haz clic para ver respuestas de Lord Chriz
+                    </div>
+                  )}
                 </div>
               ))
             )}
@@ -346,12 +359,12 @@ const BandejaMensajes = ({ admin }) => {
                 </div>
                 
                 <div className="flex gap-2">
-                  {!chatSeleccionado.aceptado && chatSeleccionado.destinatario_id === admin.id && (
+                  {chatSeleccionado.tipo === 'solicitud' && !chatSeleccionado.aceptado && chatSeleccionado.destinatario_id === admin.id && (
                     <button onClick={() => aceptarSolicitud(chatSeleccionado.id)} className="bg-orange-500 text-white px-5 py-2.5 rounded-xl font-black text-xs flex items-center gap-2 shadow-lg">
                       <UserCheck size={16}/> Aceptar Solicitud
                     </button>
                   )}
-                  {!esEmpleado && chatSeleccionado.estado === 'abierto' && chatSeleccionado.aceptado && (
+                  {chatSeleccionado.estado === 'abierto' && (chatSeleccionado.aceptado || chatSeleccionado.tipo !== 'solicitud') && (
                     <button onClick={() => marcarSolucionado(chatSeleccionado.id)} className="bg-emerald-100 text-emerald-600 px-5 py-2.5 rounded-xl font-black text-xs flex items-center gap-2 border border-emerald-200 hover:bg-emerald-600 hover:text-white transition-all shadow-sm">
                       <CheckCircle size={16}/> MARCAR SOLUCIONADO
                     </button>
@@ -376,26 +389,42 @@ const BandejaMensajes = ({ admin }) => {
                   </div>
                 </div>
 
-                {chatSeleccionado.respuestas?.map(r => (
-                  <div key={r.id} className={`flex ${r.remitente_id === admin.id ? 'justify-end' : 'justify-start'}`}>
-                    <div className={`max-w-[75%] p-5 rounded-3xl ${r.remitente_id === admin.id ? 'bg-indigo-600 text-white rounded-tr-none' : 'bg-white border border-gray-200 rounded-tl-none shadow-sm'}`}>
-                      <p className="text-[9px] font-black opacity-50 mb-1 uppercase">@{r.remitente?.username}</p>
-                      {r.evidencia_url && (
-                        <div className="relative group cursor-zoom-in mb-3" onClick={() => setImgExpandida(r.evidencia_url)}>
-                          <img src={r.evidencia_url} className="w-full h-32 object-cover rounded-2xl border border-white/20" />
-                          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center rounded-2xl">
-                            <Eye className="text-white" size={24} />
+                {chatSeleccionado.respuestas?.map(r => {
+                  const isDev = r.remitente?.rol === 'ambos' || r.remitente?.rol === 'admin_master';
+                  return (
+                    <div key={r.id} className={`flex ${r.remitente_id === admin.id ? 'justify-end' : 'justify-start'}`}>
+                      <div className={`max-w-[85%] md:max-w-[75%] p-5 rounded-3xl relative ${
+                        r.remitente_id === admin.id 
+                          ? 'bg-indigo-600 text-white rounded-tr-none shadow-md' 
+                          : isDev 
+                            ? 'bg-gradient-to-br from-blue-900 to-slate-900 text-white rounded-tl-none shadow-2xl border border-blue-500/30'
+                            : 'bg-white border border-gray-200 rounded-tl-none shadow-sm text-gray-900'
+                      }`}>
+                        {isDev && r.remitente_id !== admin.id && (
+                          <div className="absolute -top-3 -left-2 bg-blue-500 text-white text-[8px] font-black uppercase tracking-widest px-3 py-1 rounded-full shadow-lg flex items-center gap-1 border border-white/20">
+                            <Shield size={10} /> SOPORTE OFICIAL
                           </div>
-                        </div>
-                      )}
-                      <p className="text-sm font-medium leading-relaxed">{r.contenido}</p>
-                      <p className="text-[8px] mt-2 opacity-40 text-right italic">{new Date(r.created_at).toLocaleTimeString()}</p>
+                        )}
+                        <p className={`text-[9px] font-black opacity-50 mb-1 uppercase ${isDev && r.remitente_id !== admin.id ? 'mt-2 text-blue-300' : ''}`}>
+                          @{r.remitente?.username} {isDev && r.remitente_id !== admin.id && ' (LORD CHRIZ)'}
+                        </p>
+                        {r.evidencia_url && (
+                          <div className="relative group cursor-zoom-in mb-3" onClick={() => setImgExpandida(r.evidencia_url)}>
+                            <img src={r.evidencia_url} className="w-full h-32 md:h-48 object-cover rounded-2xl border border-white/20" />
+                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center rounded-2xl">
+                              <Eye className="text-white" size={24} />
+                            </div>
+                          </div>
+                        )}
+                        <p className="text-sm font-medium leading-relaxed">{r.contenido}</p>
+                        <p className="text-[8px] mt-2 opacity-40 text-right italic">{new Date(r.created_at).toLocaleTimeString()}</p>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
 
-              {chatSeleccionado.aceptado && chatSeleccionado.estado === 'abierto' ? (
+              {chatSeleccionado.estado === 'abierto' && (chatSeleccionado.aceptado || chatSeleccionado.tipo !== 'solicitud') ? (
                 <div className="p-6 border-t border-gray-100 space-y-4">
                   {evidenciaUrl && (
                     <div className="relative inline-block">
@@ -411,21 +440,9 @@ const BandejaMensajes = ({ admin }) => {
                   
                   <div className="flex gap-3 items-center">
                     <button 
-                      onClick={() => {
-                        const input = document.createElement('input');
-                        input.type = 'file';
-                        input.accept = 'image/*';
-                        input.onchange = (e) => {
-                          const file = e.target.files[0];
-                          if (file) {
-                            const reader = new FileReader();
-                            reader.onload = (re) => setEvidenciaUrl(re.target.result);
-                            reader.readAsDataURL(file);
-                          }
-                        };
-                        input.click();
-                      }}
+                      onClick={() => setShowCameraModal(true)}
                       className={`p-3.5 rounded-2xl transition-all ${evidenciaUrl ? 'bg-indigo-100 text-indigo-600' : 'bg-gray-100 text-gray-400 hover:text-indigo-600'}`}
+                      title="Cámara o Archivos"
                     >
                       <Camera size={20}/>
                     </button>
@@ -441,9 +458,9 @@ const BandejaMensajes = ({ admin }) => {
                     </button>
                   </div>
                 </div>
-              ) : !chatSeleccionado.aceptado ? (
+              ) : chatSeleccionado.estado === 'abierto' && chatSeleccionado.tipo === 'solicitud' && !chatSeleccionado.aceptado ? (
                 <div className="p-6 bg-orange-50 text-orange-600 text-center font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-2">
-                  <ShieldAlert size={16}/> Esperando a que el destinatario acepte el chat
+                  <ShieldAlert size={16}/> Esperando a que el destinatario acepte la solicitud
                 </div>
               ) : (
                 <div className="p-6 bg-emerald-50 text-emerald-600 text-center font-black text-xs uppercase tracking-widest border-t border-emerald-100">
@@ -574,6 +591,90 @@ const BandejaMensajes = ({ admin }) => {
                <X size={48}/>
              </button>
           </motion.div>
+        )}
+      </AnimatePresence>
+      <AnimatePresence>
+        {showCameraModal && (
+          <div className="fixed inset-0 z-[250] bg-black/80 backdrop-blur-xl flex items-center justify-center p-4">
+            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="bg-white rounded-[2.5rem] w-full max-w-lg overflow-hidden shadow-2xl border border-white/10">
+              <div className="bg-indigo-600 p-8 text-white flex justify-between items-center">
+                <h3 className="text-2xl font-black uppercase tracking-tighter flex items-center gap-3">
+                  <Camera size={24}/> ADJUNTAR EVIDENCIA
+                </h3>
+                <button onClick={() => setShowCameraModal(false)} className="hover:rotate-90 transition-transform"><X size={28}/></button>
+              </div>
+              
+              <div className="p-8 space-y-6">
+                <div className="relative aspect-video bg-black rounded-3xl overflow-hidden shadow-2xl border-4 border-gray-100">
+                  <video 
+                    ref={videoRef} autoPlay playsInline 
+                    className="w-full h-full object-cover"
+                  />
+                  <canvas ref={canvasRef} className="hidden" width="1280" height="720" />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <button 
+                    onClick={async () => {
+                      try {
+                        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+                        videoRef.current.srcObject = stream;
+                      } catch (err) {
+                        Swal.fire('Error', 'No se puede acceder a la cámara', 'error');
+                      }
+                    }}
+                    className="bg-gray-100 hover:bg-gray-200 py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest text-gray-600 transition-all"
+                  >
+                    Encender Cámara
+                  </button>
+                  <button 
+                    onClick={() => {
+                      const context = canvasRef.current.getContext('2d');
+                      context.drawImage(videoRef.current, 0, 0, 1280, 720);
+                      const data = canvasRef.current.toDataURL('image/jpeg', 0.8);
+                      setEvidenciaUrl(data);
+                      setShowCameraModal(false);
+                      // Stop stream
+                      if (videoRef.current.srcObject) {
+                        videoRef.current.srcObject.getTracks().forEach(t => t.stop());
+                      }
+                    }}
+                    className="bg-indigo-600 hover:bg-indigo-700 py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest text-white transition-all shadow-xl shadow-indigo-200"
+                  >
+                    Capturar Foto
+                  </button>
+                </div>
+
+                <div className="relative">
+                  <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-gray-100"></div></div>
+                  <div className="relative flex justify-center text-[10px]"><span className="px-4 bg-white text-gray-400 font-black uppercase tracking-[0.3em]">O TAMBIÉN</span></div>
+                </div>
+
+                <button 
+                  onClick={() => {
+                    const input = document.createElement('input');
+                    input.type = 'file';
+                    input.accept = 'image/*';
+                    input.onchange = (e) => {
+                      const file = e.target.files[0];
+                      if (file) {
+                        const reader = new FileReader();
+                        reader.onload = (re) => {
+                          setEvidenciaUrl(re.target.result);
+                          setShowCameraModal(false);
+                        };
+                        reader.readAsDataURL(file);
+                      }
+                    };
+                    input.click();
+                  }}
+                  className="w-full bg-slate-900 hover:bg-black py-5 rounded-2xl font-black text-xs uppercase tracking-widest text-white transition-all flex items-center justify-center gap-3 shadow-xl"
+                >
+                  <Archive size={18}/> SELECCIONAR DE ARCHIVOS
+                </button>
+              </div>
+            </motion.div>
+          </div>
         )}
       </AnimatePresence>
     </div>

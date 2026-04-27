@@ -83,13 +83,21 @@ const Login = ({ onLoginSuccess, onDevRequest }) => {
                 className="cursor-pointer transform transition-all duration-300 hover:scale-105 active:scale-95"
                 onClick={handleLogoClick}
               >
-                <div className="relative">
-                  <div className="absolute -inset-4 bg-gradient-to-r from-blue-500/20 to-purple-500/20 rounded-full blur-xl animate-pulse"></div>
-                  <img 
-                    src={logoImg} 
-                    alt="UPARQUEO Logo" 
-                    className="h-24 w-auto object-contain drop-shadow-2xl relative z-10 mx-auto"
-                  />
+                <div className="relative group">
+                  <div className="absolute -inset-2 bg-gradient-to-r from-blue-600/40 via-purple-600/40 to-cyan-600/40 rounded-full blur-xl opacity-70 group-hover:opacity-100 transition-opacity duration-500 animate-pulse"></div>
+                  
+                  {/* LOGO CSS PREMIUM */}
+                  <div className="relative z-10 mx-auto flex items-center justify-center bg-gray-950/80 backdrop-blur-xl border border-white/10 shadow-[0_0_40px_rgba(59,130,246,0.3)] rounded-full px-8 py-4 gap-4">
+                    <div className="bg-gradient-to-br from-blue-500 via-blue-600 to-purple-600 p-2.5 rounded-full shadow-[0_0_15px_rgba(59,130,246,0.5)]">
+                      <div className="bg-white rounded-full p-1.5">
+                        <span className="text-blue-600 font-black text-xl italic pr-0.5 font-sans leading-none block">P</span>
+                      </div>
+                    </div>
+                    <div className="flex flex-col items-start justify-center">
+                      <span className="text-2xl md:text-3xl font-black tracking-tighter bg-gradient-to-r from-white via-blue-100 to-gray-300 bg-clip-text text-transparent leading-none">UPARQUEO</span>
+                      <span className="text-[9px] font-black tracking-widest text-blue-400 uppercase leading-none mt-1">by ChrizDev</span>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Car, Clock, Search, ExternalLink, 
-  Trash2, DollarSign, AlertCircle, RefreshCw,
+  DollarSign, AlertCircle, RefreshCw,
   Filter, Calendar, Hash, FileText, Info,
   ShieldAlert, UserX
 } from 'lucide-react';
@@ -10,7 +10,6 @@ import {
   getRegistrosActivos, 
   calcularCobro, 
   registrarSalida, 
-  eliminarVehiculo,
   getHistorialCliente,
   addToBlacklist,
   getTarifas
@@ -161,24 +160,7 @@ const ListaActivos = ({ onVehiculoSalida, refreshKey }) => {
     }
   };
 
-  const handleEliminar = async (id, placa) => {
-    const result = await Swal.fire({
-      title: '¿Eliminar registro?',
-      text: `Se borrará el ingreso de ${placa} sin generar cobro.`,
-      icon: 'warning',
-      showCancelButton: true,
-      confirmButtonColor: '#EF4444',
-      confirmButtonText: 'Sí, eliminar'
-    });
 
-    if (result.isConfirmed) {
-      const res = await eliminarVehiculo(id);
-      if (res.success) {
-        Swal.fire('Eliminado', '', 'success');
-        cargarDatos();
-      }
-    }
-  };
 
   const vehiculosFiltrados = vehiculos.filter(v => {
     const coincideBusqueda = v.placa.toLowerCase().includes(busqueda.toLowerCase());
@@ -279,20 +261,12 @@ const ListaActivos = ({ onVehiculoSalida, refreshKey }) => {
                     >
                       <DollarSign size={20} /> REGISTRAR PAGO
                     </button>
-                    <div className="flex gap-2">
-                      <button 
-                        disabled={procesando} onClick={() => handleNoPago(v.id, v.placa)}
-                        className="flex-1 bg-red-50 text-red-500 hover:bg-red-600 hover:text-white py-4 rounded-[1.2rem] font-black text-[10px] uppercase tracking-widest transition-all flex items-center justify-center gap-2"
-                      >
-                        <UserX size={16} /> NO PAGO
-                      </button>
-                      <button 
-                        disabled={procesando} onClick={() => handleEliminar(v.id, v.placa)}
-                        className="p-4 bg-gray-50 text-gray-300 hover:bg-gray-200 hover:text-gray-600 rounded-[1.2rem] transition-all"
-                      >
-                        <Trash2 size={20} />
-                      </button>
-                    </div>
+                    <button 
+                      disabled={procesando} onClick={() => handleNoPago(v.id, v.placa)}
+                      className="w-full bg-red-50 text-red-500 hover:bg-red-600 hover:text-white py-5 rounded-[1.5rem] font-black text-xs uppercase tracking-[0.2em] transition-all flex items-center justify-center gap-2 active:scale-95 disabled:opacity-50"
+                    >
+                      <UserX size={20} /> REGISTRAR NO PAGO (LISTA NEGRA)
+                    </button>
                   </div>
                 </motion.div>
               );

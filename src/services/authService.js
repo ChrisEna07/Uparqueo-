@@ -29,8 +29,8 @@ export const getAdmins = async (currentAdmin = null, selectedModule = null) => {
     
     let filteredData = data || [];
 
-    // Si no es el Super Admin Master (ambos), aplicamos filtros estrictos
-    if (currentAdmin && currentAdmin.rol !== 'ambos') {
+    // Si no es el Super Admin Master (ambos o admin_master), aplicamos filtros estrictos
+    if (currentAdmin && currentAdmin.rol !== 'ambos' && currentAdmin.rol !== 'admin_master') {
       filteredData = filteredData.filter(u => {
         // No mostrarse a sí mismo en la lista de gestión
         if (u.id === currentAdmin.id) return false;

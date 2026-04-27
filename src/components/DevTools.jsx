@@ -640,7 +640,7 @@ const SupportView = ({ currentAdmin }) => {
         *,
         remitente:remitente_id(username, nombre_completo, rol)
       `)
-      .eq('tipo', 'soporte')
+      .or('tipo.eq.soporte,tipo.eq.solicitud')
       .order('created_at', { ascending: false });
 
     setMsgs(data || []);
@@ -738,13 +738,34 @@ const SupportView = ({ currentAdmin }) => {
                     {m.estado}
                   </span>
 
-                  <button 
-                    onClick={() => setReplyingTo(m)}
-                    className="bg-gray-800 hover:bg-blue-600 text-white px-3 py-1 rounded-full text-[9px] font-black uppercase transition-all"
-                  >
-                    Responder
-                  </button>
-                </div>
+                    <button 
+                      onClick={() => setReplyingTo(m)}
+                      className="bg-gray-800 hover:bg-blue-600 text-white px-3 py-1 rounded-full text-[9px] font-black uppercase transition-all"
+                    >
+                      Responder
+                    </button>
+                    {m.estado === 'abierto' && (
+                      <button 
+                        onClick={async () => {
+                          const res = await Swal.fire({
+                            title: '¿Solucionar Caso?',
+                            text: 'Se archivará el reporte técnico.',
+                            icon: 'question',
+                            showCancelButton: true,
+                            confirmButtonColor: '#10B981'
+                          });
+                          if (res.isConfirmed) {
+                            await supabase.from('mensajes').update({ estado: 'solucionado' }).eq('id', m.id);
+                            cargar();
+                            Swal.fire('Solucionado', 'Reporte archivado.', 'success');
+                          }
+                        }}
+                        className="bg-emerald-600/20 text-emerald-500 hover:bg-emerald-600 hover:text-white px-3 py-1 rounded-full text-[9px] font-black uppercase transition-all border border-emerald-500/20"
+                      >
+                        Solucionar
+                      </button>
+                    )}
+                  </div>
               </div>
 
               {/* TEXTO CONTROLADO */}
