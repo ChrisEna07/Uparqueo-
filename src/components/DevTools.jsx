@@ -627,164 +627,258 @@ const DevTools = ({ onClose, currentAdmin, onAction }) => {
 };
 
 const SupportView = ({ currentAdmin }) => {
-  const [msgs, setMsgs] = useState([]);
+  const [mensajesHistorial, setMensajesHistorial] = useState([]);
+  const [usuarios, setUsuarios] = useState([]);
+  const [usuarioSeleccionado, setUsuarioSeleccionado] = useState(null);
   const [cargando, setCargando] = useState(true);
+  const [busqueda, setBusqueda] = useState('');
+  
+  const [respuesta, setRespuesta] = useState('');
+  const [evidenciaUrl, setEvidenciaUrl] = useState('');
   const [imgExpandida, setImgExpandida] = useState(null);
-  const [replyingTo, setReplyingTo] = useState(null);
-  const [respuesta, setRespuesta] = useState({ contenido: '', evidencia_url: '' });
+  
+  const scrollRef = useRef(null);
 
-  const cargar = async () => {
-    const { data } = await supabase
+  useEffect(() => {
+    cargarDatos();
+  }, []);
+
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [mensajesHistorial, usuarioSeleccionado]);
+
+  const cargarDatos = async () => {
+    setCargando(true);
+    // Cargar usuarios
+    const { data: users } = await supabase.from('admins').select('id, username, rol, nombre_completo, foto_perfil');
+    setUsuarios(users || []);
+
+    // Cargar todos los mensajes (Lord Chriz ve todo)
+    const { data: msgs } = await supabase
       .from('mensajes')
       .select(`
         *,
-        remitente:remitente_id(username, nombre_completo, rol)
+        remitente:remitente_id(id, username, rol, nombre_completo),
+        destinatario:destinatario_id(id, username, rol, nombre_completo)
       `)
-      .or('tipo.eq.soporte,tipo.eq.solicitud')
-      .order('created_at', { ascending: false });
+      .order('created_at', { ascending: true });
 
-    setMsgs(data || []);
+    setMensajesHistorial(msgs || []);
     setCargando(false);
   };
 
-  useEffect(() => {
-    cargar();
-  }, []);
-
-  const enviarRespuesta = async (e) => {
-    e.preventDefault();
-    if (!respuesta.contenido.trim()) return;
+  const enviarMensaje = async (e) => {
+    if (e) e.preventDefault();
+    if (!respuesta.trim() && !evidenciaUrl) return;
 
     try {
-      const { error } = await supabase.from('mensajes').insert([{
+      const nuevoMsj = {
         remitente_id: currentAdmin.id,
-        destinatario_id: replyingTo.remitente_id,
-        asunto: `RE: ${replyingTo.asunto}`,
-        contenido: respuesta.contenido,
-        evidencia_url: respuesta.evidencia_url,
-        parent_id: replyingTo.id,
-        contexto: replyingTo.contexto,
-        tipo: 'normal'
-      }]);
+        destinatario_id: usuarioSeleccionado.id,
+        asunto: 'Soporte Lord Chriz',
+        contenido: respuesta,
+        evidencia_url: evidenciaUrl,
+        contexto: 'soporte',
+        tipo: 'soporte',
+        estado: 'abierto'
+      };
 
+      const { data, error } = await supabase.from('mensajes').insert([nuevoMsj]).select().single();
       if (error) throw error;
-      
-      Swal.fire('¡Enviado!', 'La respuesta técnica ha sido enviada al administrador.', 'success');
-      setReplyingTo(null);
-      setRespuesta({ contenido: '', evidencia_url: '' });
-      cargar();
-    } catch (err) {
-      Swal.fire('Error', 'Fallo al enviar respuesta', 'error');
+
+      setRespuesta('');
+      setEvidenciaUrl('');
+      setMensajesHistorial([...mensajesHistorial, { ...data, remitente: currentAdmin, destinatario: usuarioSeleccionado }]);
+    } catch (error) {
+      Swal.fire('Error', 'No se pudo enviar la respuesta.', 'error');
     }
   };
 
-  if (cargando) return (
-    <div className="text-center py-20 animate-pulse text-gray-500 font-black uppercase text-xs">
-      Escaneando reportes técnicos...
-    </div>
-  );
+  const abrirChat = async (contacto) => {
+    setUsuarioSeleccionado(contacto);
+  };
+
+  const contactosFiltrados = usuarios
+    .filter(u => u.id !== currentAdmin.id && (u.username.toLowerCase().includes(busqueda.toLowerCase()) || u.nombre_completo?.toLowerCase().includes(busqueda.toLowerCase())))
+    .sort((a, b) => {
+      // Ordenar por los que tienen mensajes más recientes
+      const msjsA = mensajesHistorial.filter(m => m.remitente_id === a.id || m.destinatario_id === a.id);
+      const msjsB = mensajesHistorial.filter(m => m.remitente_id === b.id || m.destinatario_id === b.id);
+      const lastA = msjsA.length > 0 ? new Date(msjsA[msjsA.length - 1].created_at).getTime() : 0;
+      const lastB = msjsB.length > 0 ? new Date(msjsB[msjsB.length - 1].created_at).getTime() : 0;
+      return lastB - lastA;
+    });
+
+  const mensajesChat = usuarioSeleccionado 
+    ? mensajesHistorial.filter(m => 
+        (m.remitente_id === currentAdmin.id && m.destinatario_id === usuarioSeleccionado.id) ||
+        (m.remitente_id === usuarioSeleccionado.id && m.destinatario_id === currentAdmin.id)
+      )
+    : [];
 
   return (
-    <div className="grid grid-cols-1 gap-6 relative">
-      {msgs.length === 0 ? (
-        <div className="text-center py-20 bg-gray-900/20 rounded-[3rem] border-2 border-dashed border-gray-800">
-          <MessageSquare size={48} className="mx-auto mb-4 text-gray-700" />
-          <p className="text-gray-500 font-black uppercase text-xs">
-            No hay reportes de soporte pendientes
-          </p>
-        </div>
-      ) : (
-        msgs.map((m) => (
-          <div
-            key={m.id}
-            className="bg-gray-900/40 border border-gray-800 p-6 md:p-8 rounded-[2.5rem] flex flex-col lg:flex-row gap-6 lg:gap-10 items-start hover:border-gray-600 transition-all group"
-          >
-            {/* 🖼️ IMAGEN MÁS PEQUEÑA */}
-            {m.evidencia_url && (
-              <div 
-                onClick={() => setImgExpandida(m.evidencia_url)}
-                className="w-full lg:w-28 aspect-square rounded-2xl overflow-hidden border border-gray-800 shadow-xl flex-shrink-0 bg-black/40 cursor-zoom-in"
-              >
-                <img
-                  src={m.evidencia_url}
-                  alt="evidencia"
-                  className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
-                />
+    <div className="flex flex-col h-[calc(100vh-140px)] md:h-[calc(100vh-200px)] p-2 md:p-6 bg-gray-950">
+      
+      <div className="flex flex-1 gap-4 md:gap-6 overflow-hidden min-h-0">
+        
+        {/* PANEL IZQUIERDO: CONTACTOS SOPORTE */}
+        <div className={`w-full md:w-[320px] lg:w-[350px] flex-shrink-0 bg-gray-900 rounded-[2rem] border border-gray-800 flex flex-col overflow-hidden ${usuarioSeleccionado ? 'hidden md:flex' : 'flex'}`}>
+          <div className="p-5 border-b border-gray-800">
+            <h3 className="text-white font-black uppercase mb-4 tracking-tighter flex items-center gap-2">
+              <Shield size={20} className="text-blue-500"/>
+              Tickets & Chats
+            </h3>
+            <div className="relative group">
+              <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                <Search className="text-gray-500" size={16}/>
               </div>
-            )}
-
-            {/* 📄 CONTENIDO LIMITADO */}
-            <div className="flex-1 w-full max-w-2xl">
-              
-              {/* HEADER */}
-              <div className="flex flex-col md:flex-row md:justify-between md:items-start gap-3 mb-4">
-                <div className="max-w-xl">
-                  <h4 className="text-lg md:text-xl font-black text-white mb-1 break-words">
-                    {m.asunto}
-                  </h4>
-                  <p className="text-[10px] font-black text-blue-500 uppercase tracking-widest break-words">
-                    @{m.remitente?.username} • {new Date(m.created_at).toLocaleString()}
-                  </p>
-                </div>
-
-                <div className="flex gap-2 flex-shrink-0">
-                  <span
-                    className={`px-3 py-1 rounded-full text-[9px] font-black uppercase whitespace-nowrap ${
-                      m.estado === "abierto"
-                        ? "bg-blue-600 text-white"
-                        : "bg-emerald-600 text-white"
-                    }`}
-                  >
-                    {m.estado}
-                  </span>
-
-                    <button 
-                      onClick={() => setReplyingTo(m)}
-                      className="bg-gray-800 hover:bg-blue-600 text-white px-3 py-1 rounded-full text-[9px] font-black uppercase transition-all"
-                    >
-                      Responder
-                    </button>
-                    {m.estado === 'abierto' && (
-                      <button 
-                        onClick={async () => {
-                          const res = await Swal.fire({
-                            title: '¿Solucionar Caso?',
-                            text: 'Se archivará el reporte técnico.',
-                            icon: 'question',
-                            showCancelButton: true,
-                            confirmButtonColor: '#10B981'
-                          });
-                          if (res.isConfirmed) {
-                            await supabase.from('mensajes').update({ estado: 'solucionado' }).eq('id', m.id);
-                            cargar();
-                            Swal.fire('Solucionado', 'Reporte archivado.', 'success');
-                          }
-                        }}
-                        className="bg-emerald-600/20 text-emerald-500 hover:bg-emerald-600 hover:text-white px-3 py-1 rounded-full text-[9px] font-black uppercase transition-all border border-emerald-500/20"
-                      >
-                        Solucionar
-                      </button>
-                    )}
-                  </div>
-              </div>
-
-              {/* TEXTO CONTROLADO */}
-              <p className="text-gray-400 text-sm leading-relaxed bg-black/20 p-4 rounded-2xl border border-gray-800 break-words max-w-xl">
-                {m.contenido}
-              </p>
-
-              {/* FOOTER */}
-              <div className="flex items-center gap-2 text-[9px] font-black text-gray-500 uppercase tracking-widest mt-4">
-                <Clock size={12} />
-                Sincronizado con Bandeja del Admin
-              </div>
-
+              <input 
+                type="text" placeholder="Buscar empleado..."
+                value={busqueda} onChange={e => setBusqueda(e.target.value)}
+                className="w-full bg-gray-950 border border-gray-800 text-white rounded-xl pl-10 pr-4 py-3 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-600 transition-all"
+              />
             </div>
           </div>
-        ))
-      )}
 
-      {/* MODAL IMAGEN */}
+          <div className="flex-1 overflow-y-auto custom-scrollbar">
+            {cargando ? (
+              <div className="p-10 text-center text-gray-500 font-black animate-pulse text-[10px] uppercase">Cargando...</div>
+            ) : contactosFiltrados.map((u) => {
+              const msjsConUsuario = mensajesHistorial.filter(m => (m.remitente_id === u.id && m.destinatario_id === currentAdmin.id) || (m.remitente_id === currentAdmin.id && m.destinatario_id === u.id));
+              const ultimoMsj = msjsConUsuario.length > 0 ? msjsConUsuario[msjsConUsuario.length - 1] : null;
+
+              return (
+                <div 
+                  key={u.id} onClick={() => abrirChat(u)}
+                  className={`p-4 border-b border-gray-800/50 cursor-pointer transition-all flex items-center gap-3 hover:bg-gray-800/50 ${usuarioSeleccionado?.id === u.id ? 'bg-blue-900/20 border-r-4 border-r-blue-500' : ''}`}
+                >
+                  <img src={u.foto_perfil || `https://ui-avatars.com/api/?name=${u.username}&background=random`} className="w-10 h-10 rounded-full object-cover border border-gray-700" />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex justify-between items-baseline mb-0.5">
+                      <h4 className="font-black text-gray-200 text-xs truncate">{u.username}</h4>
+                      {ultimoMsj && <span className="text-[9px] text-gray-500 font-bold">{new Date(ultimoMsj.created_at).toLocaleDateString()}</span>}
+                    </div>
+                    <p className="text-[10px] text-gray-500 truncate font-medium">
+                      {ultimoMsj ? (ultimoMsj.remitente_id === currentAdmin.id ? `Lord: ${ultimoMsj.contenido || '📷'}` : ultimoMsj.contenido || '📷 Foto') : 'Iniciar chat'}
+                    </p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* PANEL DERECHO: CHAT SOPORTE */}
+        <div className={`flex-1 min-w-0 bg-gray-900 rounded-[2rem] border border-gray-800 flex flex-col overflow-hidden ${usuarioSeleccionado ? 'flex' : 'hidden md:flex'}`}>
+          {usuarioSeleccionado ? (
+            <>
+              {/* HEADER CHAT */}
+              <div className="p-4 border-b border-gray-800 flex items-center gap-3 bg-gray-950">
+                <button 
+                  onClick={() => setUsuarioSeleccionado(null)} 
+                  className="md:hidden p-2 bg-gray-800 rounded-lg text-gray-400"
+                >
+                  <ArrowLeft size={16}/>
+                </button>
+                <img src={usuarioSeleccionado.foto_perfil || `https://ui-avatars.com/api/?name=${usuarioSeleccionado.username}`} className="w-8 h-8 rounded-full border border-gray-700" />
+                <div>
+                  <h3 className="font-black text-sm text-gray-200 leading-none">{usuarioSeleccionado.username}</h3>
+                  <p className="text-[9px] font-black text-blue-500 uppercase tracking-widest mt-1">Soporte Técnico</p>
+                </div>
+              </div>
+
+              {/* MENSAJES */}
+              <div ref={scrollRef} className="flex-1 p-4 md:p-6 overflow-y-auto space-y-4 custom-scrollbar">
+                {mensajesChat.map(m => {
+                  const isMe = m.remitente_id === currentAdmin.id;
+                  return (
+                    <div key={m.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
+                      <div className={`max-w-[80%] p-3 md:p-4 rounded-2xl md:rounded-3xl relative ${
+                        isMe 
+                          ? 'bg-blue-600 text-white rounded-br-sm' 
+                          : 'bg-gray-800 border border-gray-700 rounded-bl-sm text-gray-200'
+                      }`}>
+                        {m.evidencia_url && (
+                          <div className="relative group cursor-zoom-in mb-2" onClick={() => setImgExpandida(m.evidencia_url)}>
+                            <img src={m.evidencia_url} className="w-full max-h-48 object-cover rounded-xl border border-black/20" />
+                          </div>
+                        )}
+                        {m.contenido && <p className="text-xs md:text-sm font-medium leading-relaxed whitespace-pre-wrap">{m.contenido}</p>}
+                        <p className={`text-[9px] mt-1 text-right font-bold ${isMe ? 'opacity-60 text-blue-100' : 'opacity-40 text-gray-500'}`}>
+                          {new Date(m.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* INPUT */}
+              <div className="p-4 border-t border-gray-800 bg-gray-950">
+                {evidenciaUrl && (
+                  <div className="mb-3 relative inline-block">
+                    <img src={evidenciaUrl} className="h-16 w-auto rounded-lg border border-gray-700" />
+                    <button onClick={() => setEvidenciaUrl('')} className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1"><X size={10}/></button>
+                  </div>
+                )}
+                <form onSubmit={enviarMensaje} className="flex gap-2 md:gap-3 items-end">
+                  <button 
+                    type="button"
+                    onClick={() => {
+                      const input = document.createElement('input');
+                      input.type = 'file';
+                      input.accept = 'image/*';
+                      input.onchange = (e) => {
+                        const file = e.target.files[0];
+                        if (file) {
+                          const reader = new FileReader();
+                          reader.onload = (re) => setEvidenciaUrl(re.target.result);
+                          reader.readAsDataURL(file);
+                        }
+                      };
+                      input.click();
+                    }}
+                    className={`p-3 md:p-4 rounded-xl transition-all ${evidenciaUrl ? 'bg-blue-900 text-blue-400' : 'bg-gray-800 text-gray-400 hover:text-white'}`}
+                  >
+                    <Upload size={18}/>
+                  </button>
+
+                  <textarea 
+                    placeholder="Respuesta técnica..."
+                    rows="1"
+                    value={respuesta} 
+                    onChange={e => setRespuesta(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        enviarMensaje();
+                      }
+                    }}
+                    className="flex-1 min-w-0 bg-gray-900 border border-gray-800 text-white rounded-xl md:rounded-2xl px-4 py-3.5 text-xs md:text-sm outline-none focus:ring-2 focus:ring-blue-600 transition-all resize-none max-h-32 custom-scrollbar"
+                  />
+                  
+                  <button 
+                    type="submit" 
+                    disabled={!respuesta.trim() && !evidenciaUrl}
+                    className="flex-shrink-0 bg-blue-600 disabled:bg-gray-800 disabled:text-gray-600 text-white p-3 md:p-4 rounded-xl md:rounded-2xl hover:scale-105 active:scale-95 transition-all"
+                  >
+                    <Send size={18}/>
+                  </button>
+                </form>
+              </div>
+            </>
+          ) : (
+            <div className="flex-1 flex flex-col items-center justify-center text-gray-500 p-10 text-center">
+              <MessageSquare size={48} className="mb-4 opacity-50" />
+              <h4 className="font-black text-lg uppercase tracking-tighter">Soporte Técnico</h4>
+              <p className="font-bold text-[10px] uppercase tracking-widest mt-2">Selecciona un empleado para chatear</p>
+            </div>
+          )}
+        </div>
+      </div>
+
       <AnimatePresence>
         {imgExpandida && (
           <motion.div 
@@ -794,82 +888,8 @@ const SupportView = ({ currentAdmin }) => {
           >
              <motion.img 
                initial={{ scale: 0.9 }} animate={{ scale: 1 }}
-               src={imgExpandida}
-               className="max-w-full max-h-full rounded-3xl shadow-2xl object-contain border border-white/10"
+               src={imgExpandida} className="max-w-full max-h-full rounded-3xl object-contain" 
              />
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* MODAL RESPUESTA (SIN CAMBIOS DE LÓGICA) */}
-      <AnimatePresence>
-        {replyingTo && (
-          <motion.div 
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[300] bg-black/80 backdrop-blur-md flex items-center justify-center p-4"
-          >
-             <motion.div 
-               initial={{ y: 50 }} animate={{ y: 0 }}
-               className="bg-gray-900 border border-gray-800 w-full max-w-xl rounded-[3rem] overflow-hidden shadow-2xl"
-             >
-                <div className="bg-blue-600 p-8 text-white relative">
-                  <h3 className="text-2xl font-black uppercase tracking-tighter">ENVIAR SOLUCIÓN TÉCNICA</h3>
-                  <p className="text-[10px] font-black opacity-60 uppercase tracking-widest">Para: @{replyingTo.remitente?.username}</p>
-                  <button onClick={() => setReplyingTo(null)} className="absolute top-8 right-8"><X size={24}/></button>
-                </div>
-                
-                <form onSubmit={enviarRespuesta} className="p-8 space-y-6">
-                  <div>
-                    <label className="text-[10px] font-black text-gray-500 uppercase ml-2 block mb-2 tracking-widest">Respuesta Detallada</label>
-                    <textarea 
-                      required rows="4"
-                      value={respuesta.contenido} onChange={e => setRespuesta({...respuesta, contenido: e.target.value})}
-                      placeholder="Explica la solución o los pasos a seguir..."
-                      className="w-full bg-black border border-gray-800 rounded-2xl p-4 text-white font-medium outline-none focus:ring-2 focus:ring-blue-600"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="text-[10px] font-black text-gray-500 uppercase ml-2 block mb-2 tracking-widest">Adjuntar Evidencia Visual (Opcional)</label>
-                    <button 
-                      type="button"
-                      onClick={() => {
-                        const input = document.createElement('input');
-                        input.type = 'file';
-                        input.accept = 'image/*';
-                        input.onchange = (e) => {
-                          const file = e.target.files[0];
-                          if (file) {
-                            const reader = new FileReader();
-                            reader.onload = (re) => setRespuesta({...respuesta, evidencia_url: re.target.result});
-                            reader.readAsDataURL(file);
-                          }
-                        };
-                        input.click();
-                      }}
-                      className="w-full bg-gray-950 border-2 border-dashed border-gray-800 rounded-2xl p-6 flex flex-col items-center gap-2 hover:border-blue-600 transition-all group"
-                    >
-                      {respuesta.evidencia_url ? (
-                        <div className="relative">
-                          <img src={respuesta.evidencia_url} className="h-24 w-auto rounded-xl shadow-2xl border border-gray-700" />
-                          <div className="absolute -top-2 -right-2 bg-red-600 text-white rounded-full p-1" onClick={(e) => { e.stopPropagation(); setRespuesta({...respuesta, evidencia_url: ''}); }}>
-                            <X size={12}/>
-                          </div>
-                        </div>
-                      ) : (
-                        <>
-                          <Upload size={24} className="text-gray-600 group-hover:text-blue-500 transition-colors" />
-                          <span className="text-[9px] font-black text-gray-500 uppercase tracking-widest">Subir Imagen de Solución</span>
-                        </>
-                      )}
-                    </button>
-                  </div>
-
-                  <button className="w-full bg-blue-600 text-white py-5 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-blue-700 transition-all shadow-xl">
-                    Sincronizar Solución con Usuario
-                  </button>
-                </form>
-             </motion.div>
           </motion.div>
         )}
       </AnimatePresence>

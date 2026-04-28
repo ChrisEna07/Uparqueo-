@@ -44,6 +44,18 @@ function App() {
     setTimeout(() => setNotification(null), 3000);
   };
 
+  const sendNativeNotification = (title, body) => {
+    if ('Notification' in window && Notification.permission === 'granted') {
+      new Notification(title, { body, icon: '/icon-192x192.png' });
+    }
+  };
+
+  useEffect(() => {
+    if ('Notification' in window && Notification.permission !== 'granted' && Notification.permission !== 'denied') {
+      Notification.requestPermission();
+    }
+  }, []);
+
   useEffect(() => {
     const handleScroll = () => {
       setIsScrolled(window.scrollY > 10);
@@ -227,7 +239,7 @@ function App() {
   useEffect(() => {
     if (!admin) return;
 
-    // Canal para Mensajes
+    // Canal unificado para todas las notificaciones
     const msgChannel = supabase
       .channel('schema-db-changes')
       .on('postgres_changes', { 
@@ -237,9 +249,10 @@ function App() {
         filter: `destinatario_id=eq.${admin.id}`
       }, (payload) => {
         showNotification(`Nuevo mensaje de @${payload.new.asunto || 'Sistema'}`, 'success');
+        sendNativeNotification('Nuevo Mensaje', `Tienes un nuevo mensaje en el chat.`);
         setRefreshKey(k => k + 1);
       })
-      // Canal para Pagos de Parqueo
+      // Canal para Pagos de Parqueo (UPDATE)
       .on('postgres_changes', {
         event: 'UPDATE',
         schema: 'public',
@@ -251,7 +264,19 @@ function App() {
           setRefreshKey(k => k + 1);
         }
       })
-      // Canal para Abonos de Informales
+      // Canal para NUEVOS vehículos en Parqueadero (INSERT)
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'registros_parqueadero' // O registros_parqueo dependiendo de la tabla
+      }, (payload) => {
+        if (admin.rol === 'ambos' || admin.rol === 'parqueadero') {
+          showNotification(`Nuevo vehículo registrado: ${payload.new.placa}`, 'success');
+          sendNativeNotification('Vehículo Nuevo', `Se ha registrado el vehículo ${payload.new.placa} en el parqueadero.`);
+          setRefreshKey(k => k + 1);
+        }
+      })
+      // Canal para Abonos de Informales (UPDATE)
       .on('postgres_changes', {
         event: 'UPDATE',
         schema: 'public',
@@ -262,6 +287,18 @@ function App() {
             showNotification(`Nuevo abono: ${payload.new.nombre_negocio}`, 'success');
             setRefreshKey(k => k + 1);
           }
+        }
+      })
+      // Canal para NUEVOS negocios Informales (INSERT)
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'negocios_informales'
+      }, (payload) => {
+        if (admin.rol === 'ambos' || admin.rol === 'informales') {
+          showNotification(`Nuevo negocio registrado: ${payload.new.nombre_negocio}`, 'success');
+          sendNativeNotification('Negocio Informal Nuevo', `Se ha registrado ${payload.new.nombre_negocio}.`);
+          setRefreshKey(k => k + 1);
         }
       })
       .subscribe();
