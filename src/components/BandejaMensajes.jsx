@@ -43,14 +43,16 @@ const BandejaMensajes = ({ admin }) => {
     // Escuchar nuevos mensajes en tiempo real
     if (!admin?.id) return;
     const msgChannel = supabase
-      .channel('chat-directo')
+      .channel('mensajes-admin')
       .on('postgres_changes', { 
         event: 'INSERT', 
         schema: 'public', 
-        table: 'mensajes',
-        filter: `destinatario_id=eq.${admin.id}`
-      }, () => {
-        cargarHistorial();
+        table: 'mensajes'
+      }, (payload) => {
+        // Recargar si el mensaje nos involucra
+        if (payload.new.remitente_id === admin.id || payload.new.destinatario_id === admin.id) {
+          cargarHistorial();
+        }
       })
       .subscribe();
 
@@ -136,6 +138,14 @@ const BandejaMensajes = ({ admin }) => {
   // Filtrar los usuarios con los que puede chatear
   const contactosHabilitados = usuarios.filter(u => {
     if (u.id === admin.id) return false;
+    
+    // Si estamos en contexto de soporte, mostrar admins master y cuentas de desarrollador
+    if (contextoActivo === 'soporte') {
+      const isMaster = u.rol === 'ambos' || u.rol === 'admin_master' || u.rol === 'master';
+      const isDev = u.username.toLowerCase().includes('chriz') || u.username.toLowerCase().includes('dev');
+      return isMaster || isDev;
+    }
+
     if (esEmpleado) {
       // El empleado solo puede hablar con Admins (Master y su respectivo contexto)
       if (u.rol === 'ambos' || u.rol === 'admin_master') return true;
@@ -185,22 +195,30 @@ const BandejaMensajes = ({ admin }) => {
         </div>
 
         <div className="flex items-center gap-2 bg-black/20 p-1.5 rounded-xl border border-white/5">
-          {(admin?.rol === 'ambos' || admin?.rol === 'admin_master' || (esEmpleado && admin?.rol === 'empleado_ambos')) && (
-            <div className="flex bg-black/40 p-1 rounded-lg">
+          <div className="flex bg-black/40 p-1 rounded-lg">
+            {(admin?.rol === 'ambos' || admin?.rol === 'admin_master' || (esEmpleado && admin?.rol === 'empleado_ambos') || admin?.rol === 'parqueadero') && (
               <button 
                 onClick={() => { setContextoActivo('parqueadero'); setUsuarioSeleccionado(null); }}
                 className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-[10px] font-black transition-all ${contextoActivo === 'parqueadero' ? 'bg-indigo-600 text-white' : 'text-gray-500 hover:text-white'}`}
               >
                 <Car size={14}/> PARQUEO
               </button>
+            )}
+            {(admin?.rol === 'ambos' || admin?.rol === 'admin_master' || (esEmpleado && admin?.rol === 'empleado_ambos') || admin?.rol === 'informales') && (
               <button 
                 onClick={() => { setContextoActivo('informales'); setUsuarioSeleccionado(null); }}
                 className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-[10px] font-black transition-all ${contextoActivo === 'informales' ? 'bg-orange-600 text-white' : 'text-gray-500 hover:text-white'}`}
               >
                 <Store size={14}/> INFORMALES
               </button>
-            </div>
-          )}
+            )}
+            <button 
+              onClick={() => { setContextoActivo('soporte'); setUsuarioSeleccionado(null); }}
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-[10px] font-black transition-all ${contextoActivo === 'soporte' ? 'bg-blue-600 text-white' : 'text-gray-500 hover:text-white'}`}
+            >
+              <Shield size={14}/> SOPORTE
+            </button>
+          </div>
         </div>
       </div>
 
@@ -226,9 +244,17 @@ const BandejaMensajes = ({ admin }) => {
             {cargando && usuarios.length === 0 ? (
               <div className="p-10 text-center text-gray-300 font-black animate-pulse text-xs uppercase tracking-widest">Cargando...</div>
             ) : contactosFiltrados.length === 0 ? (
-              <div className="p-10 text-center opacity-30">
-                <User size={32} className="mx-auto mb-3" />
-                <p className="font-black text-[10px] uppercase">Sin contactos</p>
+              <div className="p-10 text-center">
+                <User size={32} className="mx-auto mb-3 text-gray-300" />
+                <p className="font-black text-[10px] uppercase text-gray-400 mb-4">Sin contactos en esta sección</p>
+                {contextoActivo !== 'soporte' && (
+                  <button 
+                    onClick={() => setContextoActivo('soporte')}
+                    className="bg-blue-600 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-700 transition-all shadow-lg shadow-blue-900/20"
+                  >
+                    Contactar Soporte
+                  </button>
+                )}
               </div>
             ) : (
               contactosFiltrados.map((u) => {
@@ -258,8 +284,8 @@ const BandejaMensajes = ({ admin }) => {
                         <p className="text-[10px] text-gray-400 truncate font-medium flex-1">
                           {ultimoMsj ? (ultimoMsj.remitente_id === admin.id ? `Tú: ${ultimoMsj.contenido || '📷 Foto'}` : ultimoMsj.contenido || '📷 Foto') : 'Pulsa para chatear'}
                         </p>
-                        <span className={`ml-2 px-1.5 py-0.5 rounded text-[8px] font-black uppercase whitespace-nowrap ${u.rol.includes('admin') ? 'bg-blue-100 text-blue-600' : 'bg-emerald-100 text-emerald-600'}`}>
-                          {u.rol === 'ambos' ? 'Lord' : u.rol.includes('empleado') ? 'Empleado' : 'Admin'}
+                        <span className={`ml-2 px-1.5 py-0.5 rounded text-[8px] font-black uppercase whitespace-nowrap ${u.rol.includes('admin') || u.rol === 'ambos' || u.rol === 'master' ? 'bg-blue-100 text-blue-600' : 'bg-emerald-100 text-emerald-600'}`}>
+                          {(u.rol === 'ambos' || u.rol === 'admin_master' || u.rol === 'master' || u.username.toLowerCase().includes('chriz')) ? 'Soporte Técnico' : u.rol.includes('empleado') ? 'Empleado' : 'Admin'}
                         </span>
                       </div>
                     </div>

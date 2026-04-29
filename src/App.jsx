@@ -50,11 +50,6 @@ function App() {
     }
   };
 
-  useEffect(() => {
-    if ('Notification' in window && Notification.permission !== 'granted' && Notification.permission !== 'denied') {
-      Notification.requestPermission();
-    }
-  }, []);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -473,64 +468,61 @@ function App() {
       >
         <div className="absolute inset-0 bg-black opacity-20"></div>
         <div className="relative w-full px-4">
-          <div className="flex items-center justify-between flex-wrap gap-4">
-            <div className="flex items-center gap-4 flex-1 min-w-0">
+          <div className="flex items-center justify-between gap-2 md:gap-4">
+            <div className="flex items-center gap-2 md:gap-4 overflow-hidden">
               <button 
                 onClick={handleMenuToggle}
-                className="md:hidden p-3 bg-white/10 hover:bg-white/20 rounded-2xl transition-all active:scale-95 border border-white/10"
+                className="md:hidden p-2.5 bg-white/10 hover:bg-white/20 rounded-xl transition-all active:scale-95 border border-white/10 flex-shrink-0"
               >
-                {menuAbierto ? <X size={24} /> : <Menu size={24} />}
+                {menuAbierto ? <X size={20} /> : <Menu size={20} />}
               </button>
-
+ 
               <div 
                 onClick={handleLogoClick}
-                className="cursor-pointer relative z-10 flex items-center justify-center bg-gray-950/20 backdrop-blur-md border border-white/20 shadow-[0_0_20px_rgba(255,255,255,0.1)] rounded-full px-4 py-2 gap-3 transition-transform active:scale-95 hover:bg-gray-900/40"
+                className="cursor-pointer relative z-10 flex items-center justify-center bg-gray-950/20 backdrop-blur-md border border-white/20 shadow-lg rounded-full px-3 py-1.5 md:px-4 md:py-2 gap-2 md:gap-3 transition-transform active:scale-95 hover:bg-gray-900/40 min-w-0"
               >
-                <div className="bg-gradient-to-br from-blue-400 via-blue-500 to-purple-500 p-1.5 rounded-full shadow-lg">
+                <div className="bg-gradient-to-br from-blue-400 via-blue-500 to-purple-500 p-1 rounded-full shadow-lg flex-shrink-0">
                   <div className="bg-white rounded-full p-1">
-                    <span className="text-blue-600 font-black text-sm italic pr-0.5 font-sans leading-none block">P</span>
+                    <span className="text-blue-600 font-black text-[10px] md:text-sm italic pr-0.5 font-sans leading-none block">P</span>
                   </div>
                 </div>
-                <div className="flex flex-col items-start justify-center pr-2">
-                  <span className="text-xl md:text-2xl font-black tracking-tighter bg-gradient-to-r from-white via-blue-50 to-gray-200 bg-clip-text text-transparent leading-none drop-shadow-md">UPARQUEO</span>
-                  <span className="text-[7px] md:text-[8px] font-black tracking-widest text-blue-200 uppercase leading-none mt-0.5 drop-shadow-md">by ChrizDev</span>
+                <div className="flex flex-col items-start justify-center pr-1 md:pr-2 overflow-hidden">
+                  <span className="text-base md:text-2xl font-black tracking-tighter bg-gradient-to-r from-white via-blue-50 to-gray-200 bg-clip-text text-transparent leading-none drop-shadow-md truncate">UPARQUEO</span>
+                  <span className="text-[6px] md:text-[8px] font-black tracking-widest text-blue-200 uppercase leading-none mt-0.5 drop-shadow-md truncate">by ChrizDev</span>
                 </div>
               </div>
             </div>
             
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 md:gap-3 flex-shrink-0">
               {deferredPrompt && (
                 <button 
                   onClick={handleInstallApp}
-                  className="hidden md:flex bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest border border-white/10 transition-all items-center gap-2 active:scale-95 shadow-lg shadow-emerald-900/20"
+                  className="hidden lg:flex bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest border border-white/10 transition-all items-center gap-2 active:scale-95 shadow-lg shadow-emerald-900/20"
                 >
                   <Download size={16} /> Instalar Web App
                 </button>
               )}
-
+ 
               <button 
                 onClick={() => setAppView('home')}
-                className="bg-white/10 hover:bg-white/20 backdrop-blur-md px-4 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-[0.2em] border border-white/10 transition-all flex items-center gap-2 active:scale-95"
+                className="bg-white/10 hover:bg-white/20 backdrop-blur-md p-2.5 md:px-4 md:py-2.5 rounded-xl text-[10px] font-black uppercase tracking-[0.2em] border border-white/10 transition-all flex items-center gap-2 active:scale-95"
               >
-                <ArrowLeft size={16} /> Volver
+                <ArrowLeft size={18} /> <span className="hidden xs:block">Volver</span>
               </button>
-
+ 
               <div 
                 onClick={() => setMostrarPerfil(true)}
-                className="flex items-center gap-3 bg-white/10 hover:bg-white/20 backdrop-blur-lg rounded-2xl p-2 pr-4 cursor-pointer transition-all border border-white/10 group"
+                className="flex items-center gap-2 md:gap-3 bg-white/10 hover:bg-white/20 backdrop-blur-lg rounded-xl md:rounded-2xl p-1.5 md:p-2 md:pr-4 cursor-pointer transition-all border border-white/10 group"
               >
                 <img 
                   src={admin?.foto_perfil || "https://ui-avatars.com/api/?name=" + admin?.username} 
-                  className="w-10 h-10 rounded-xl object-cover border-2 border-white/30"
+                  className="w-8 h-8 md:w-10 md:h-10 rounded-lg md:rounded-xl object-cover border-2 border-white/30"
                 />
                 <div className="hidden sm:block text-left">
-                  <p className="text-xs font-bold opacity-70 uppercase tracking-tighter">
-                    {admin?.rol === 'ambos' ? 'Admin Master' : 
-                     admin?.rol === 'parqueadero' ? 'Admin Parqueo' : 
-                     admin?.rol === 'informales' ? 'Admin Informales' : 
-                     admin?.rol?.replace('_', ' ')}
+                  <p className="text-[8px] font-bold opacity-70 uppercase tracking-tighter leading-none mb-1">
+                    {admin?.rol?.split('_')[0]}
                   </p>
-                  <p className="text-sm font-black">{admin?.nombre_completo || admin?.username}</p>
+                  <p className="text-xs font-black leading-none">{admin?.nombre_completo?.split(' ')[0] || admin?.username}</p>
                 </div>
               </div>
             </div>
