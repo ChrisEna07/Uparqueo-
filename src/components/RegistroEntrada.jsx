@@ -5,7 +5,7 @@ import { getTarifas } from '../services/parqueoService';
 import { Car, Bike, Save, AlertCircle, CheckCircle, Clock, User, Hash, DollarSign } from 'lucide-react';
 import Swal from 'sweetalert2';
 
-const RegistroEntrada = ({ onRegistroExitoso }) => {
+const RegistroEntrada = ({ onRegistroExitoso, admin }) => {
   const [placa, setPlaca] = useState('');
   const [cliente, setCliente] = useState('');
   const [tipo, setTipo] = useState('carro');
@@ -77,7 +77,7 @@ const RegistroEntrada = ({ onRegistroExitoso }) => {
     setCargando(true);
     
     try {
-      await registrarEntrada(placa, cliente, tipo);
+      await registrarEntrada(placa, tipo, cliente, admin?.username || 'admin');
       
       await Swal.fire({
         title: '¡Registro Exitoso!',

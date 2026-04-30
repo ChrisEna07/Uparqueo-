@@ -2,8 +2,25 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Bell, Car, Store, AlertCircle, ShieldAlert, Clock, Trash2, CheckCircle, Info } from 'lucide-react';
 
-const ModuloNotificaciones = ({ notificaciones, onClear }) => {
+const ModuloNotificaciones = ({ notificaciones, onClear, selectedModule }) => {
   const [filtro, setFiltro] = useState('todas');
+
+  // Filtrar notificaciones globales por módulo seleccionado ANTES de los filtros internos
+  const notificacionesModulo = notificaciones.filter(n => {
+    if (selectedModule === 'parqueadero') {
+      return n.categoria === 'parqueo' || n.categoria === 'bloqueo' || n.categoria === 'evidencia';
+    }
+    if (selectedModule === 'informales') {
+      return n.categoria === 'informales' || n.categoria === 'bloqueo' || n.categoria === 'evidencia';
+    }
+    return true; // Admin master ve todo
+  });
+
+  const getFiltrosDisponibles = () => {
+    if (selectedModule === 'parqueadero') return ['todas', 'parqueo', 'evidencia', 'bloqueo'];
+    if (selectedModule === 'informales') return ['todas', 'informales', 'evidencia', 'bloqueo'];
+    return ['todas', 'parqueo', 'informales', 'evidencia', 'bloqueo'];
+  };
 
   const getIcon = (tipo) => {
     switch (tipo) {
@@ -26,8 +43,8 @@ const ModuloNotificaciones = ({ notificaciones, onClear }) => {
   };
 
   const filtradas = filtro === 'todas' 
-    ? notificaciones 
-    : notificaciones.filter(n => n.categoria === filtro);
+    ? notificacionesModulo 
+    : notificacionesModulo.filter(n => n.categoria === filtro);
 
   return (
     <div className="max-w-4xl mx-auto space-y-6 pb-20">
@@ -51,7 +68,7 @@ const ModuloNotificaciones = ({ notificaciones, onClear }) => {
 
       {/* Filtros */}
       <div className="flex gap-2 overflow-x-auto pb-2 custom-scrollbar">
-        {['todas', 'parqueo', 'informales', 'evidencia', 'bloqueo'].map(f => (
+        {getFiltrosDisponibles().map(f => (
           <button
             key={f}
             onClick={() => setFiltro(f)}
@@ -59,7 +76,7 @@ const ModuloNotificaciones = ({ notificaciones, onClear }) => {
               filtro === f ? 'bg-indigo-600 text-white shadow-lg' : 'bg-white text-gray-500 hover:bg-gray-50 border border-gray-100'
             }`}
           >
-            {f}
+            {f === 'parqueo' ? 'PARQUEADERO' : f === 'todas' ? 'GENERAL' : f}
           </button>
         ))}
       </div>

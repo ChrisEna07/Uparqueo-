@@ -116,7 +116,7 @@ export const getConfiguracion = async () => {
 // ============================================
 
 // 5. REGISTRAR ENTRADA (Con validación de Lista Negra)
-export const registrarEntrada = async (placa, cliente, tipo) => {
+export const registrarEntrada = async (placa, tipo, cliente, adminUsername = 'sistema') => {
   try {
     if (!placa || placa.trim() === '') {
       throw new Error("La placa es obligatoria");
@@ -168,6 +168,7 @@ export const registrarEntrada = async (placa, cliente, tipo) => {
         cliente_nombre: cliente || null, 
         tipo_vehiculo: tipo,
         estado: 'activo',
+        registrado_por: adminUsername,
         entrada: new Date().toISOString()
       }])
       .select();
@@ -292,7 +293,7 @@ export const calcularCobro = async (idRegistro) => {
 };
 
 // 9. REGISTRAR SALIDA
-export const registrarSalida = async (idRegistro, totalPagar) => {
+export const registrarSalida = async (idRegistro, totalPagar, adminUsername = 'sistema') => {
   try {
     const ahora = new Date().toISOString();
     
@@ -301,7 +302,8 @@ export const registrarSalida = async (idRegistro, totalPagar) => {
       .update({ 
         salida: ahora,
         total_pagar: totalPagar,
-        estado: 'finalizado'
+        estado: 'finalizado',
+        usuario_recibe: adminUsername
       })
       .eq('id', idRegistro)
       .eq('estado', 'activo')

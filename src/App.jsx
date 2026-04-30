@@ -38,7 +38,6 @@ function App() {
   const [showCamera, setShowCamera] = useState(false);
   const [theme, setTheme] = useState(localStorage.getItem('uparqueo_theme') || 'light');
   const [fontSize, setFontSize] = useState(parseInt(localStorage.getItem('uparqueo_font_size')) || 16);
-  const [notificaciones, setNotificaciones] = useState(JSON.parse(localStorage.getItem('uparqueo_notificaciones')) || []);
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const menuRef = useRef(null);
@@ -55,20 +54,12 @@ function App() {
     setTimeout(() => setNotification(null), 4000);
   };
 
+  const esNotificacionRelevante = (categoria) => {
+    return true;
+  };
+
   const addNotificacion = (titulo, mensaje, categoria) => {
-    const nueva = {
-      id: Date.now(),
-      titulo,
-      mensaje,
-      categoria,
-      tiempo: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      nuevo: true
-    };
-    const updated = [nueva, ...notificaciones].slice(0, 50); // Mantener últimas 50
-    setNotificaciones(updated);
-    localStorage.setItem('uparqueo_notificaciones', JSON.stringify(updated));
-    showNotification(titulo, 'success');
-    sendNativeNotification(titulo, mensaje);
+    // Módulo eliminado por solicitud
   };
 
   const requestNotificationPermission = async () => {
@@ -83,8 +74,26 @@ function App() {
   };
 
   const sendNativeNotification = (title, body) => {
-    if ('Notification' in window && Notification.permission === 'granted') {
-      new Notification(title, { body, icon: '/icon-192x192.png' });
+    if (!('Notification' in window) || Notification.permission !== 'granted') return;
+
+    // Priorizar el uso del Service Worker (necesario para móvil/Android/iOS PWA)
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.ready.then(registration => {
+        registration.showNotification(title, {
+          body,
+          icon: '/favicon.svg',
+          badge: '/favicon.svg',
+          vibrate: [200, 100, 200],
+          tag: 'uparqueo-notif',
+          renotify: true
+        });
+      }).catch(err => {
+        // Fallback a notificación estándar si el SW falla
+        new Notification(title, { body, icon: '/favicon.svg' });
+      });
+    } else {
+      // Fallback para navegadores antiguos sin SW
+      new Notification(title, { body, icon: '/favicon.svg' });
     }
   };
 
@@ -149,23 +158,46 @@ function App() {
     fetchDevKey();
 
     // RESTAURAR SESIÓN DESDE LOCALSTORAGE
-    const savedSession = localStorage.getItem('uparqueo_session');
-    if (savedSession) {
-      try {
-        const { adminData, view, module, activeTab } = JSON.parse(savedSession);
-        setAdmin(adminData);
-        setAppView(view || 'home');
-        if (module) setSelectedModule(module);
-        if (activeTab) setTab(activeTab);
-        setPerfilForm({
-          nombre_completo: adminData.nombre_completo || '',
-          foto_perfil: adminData.foto_perfil || ''
-        });
-      } catch (e) {
-        console.error("Error restaurando sesión:", e);
-        localStorage.removeItem('uparqueo_session');
+    const verificarSesion = async () => {
+      const savedSession = localStorage.getItem('uparqueo_session');
+      if (savedSession) {
+        try {
+          const { adminData, view, module, activeTab } = JSON.parse(savedSession);
+          
+          // Verificar contra la base de datos si el usuario AÚN existe
+          if (adminData && adminData.id) {
+            const { data, error } = await supabase
+              .from('admins')
+              .select('id')
+              .eq('id', adminData.id)
+              .maybeSingle();
+
+            if (error || !data) {
+              // El usuario fue eliminado o no existe, forzar cierre de sesión
+              console.warn("Sesión inválida: El usuario ya no existe en la base de datos.");
+              localStorage.removeItem('uparqueo_session');
+              setAdmin(null);
+              setAppView('login');
+              return;
+            }
+          }
+
+          setAdmin(adminData);
+          setAppView(view || 'home');
+          if (module) setSelectedModule(module);
+          if (activeTab) setTab(activeTab);
+          setPerfilForm({
+            nombre_completo: adminData?.nombre_completo || '',
+            foto_perfil: adminData?.foto_perfil || ''
+          });
+        } catch (e) {
+          console.error("Error restaurando sesión:", e);
+          localStorage.removeItem('uparqueo_session');
+        }
       }
-    }
+    };
+    
+    verificarSesion();
   }, []);
 
   useEffect(() => {
@@ -275,76 +307,8 @@ function App() {
     }
   };
 
-  // SISTEMA DE NOTIFICACIONES EN TIEMPO REAL
   useEffect(() => {
-    if (!admin) return;
-
-    // Canal unificado para todas las notificaciones
-    const msgChannel = supabase
-      .channel('schema-db-changes')
-      // Canal para Pagos de Parqueo (UPDATE)
-      .on('postgres_changes', {
-        event: 'UPDATE',
-        schema: 'public',
-        table: 'registros_parqueo',
-        filter: 'estado=eq.finalizado'
-      }, (payload) => {
-        if (admin.rol === 'ambos' || admin.rol === 'parqueadero') {
-          addNotificacion('Pago Recibido', `Vehículo ${payload.new.placa} finalizó con pago de $${payload.new.total_pagar.toLocaleString()}`, 'parqueo');
-          setRefreshKey(k => k + 1);
-        }
-      })
-      // Canal para NUEVOS vehículos en Parqueadero (INSERT)
-      .on('postgres_changes', {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'registros_parqueadero'
-      }, (payload) => {
-        if (admin.rol === 'ambos' || admin.rol === 'parqueadero') {
-          addNotificacion('Nuevo Ingreso', `Se registró el vehículo ${payload.new.placa}`, 'parqueo');
-          setRefreshKey(k => k + 1);
-        }
-      })
-      // Canal para Abonos de Informales (UPDATE)
-      .on('postgres_changes', {
-        event: 'UPDATE',
-        schema: 'public',
-        table: 'negocios_informales'
-      }, (payload) => {
-        if (admin.rol === 'ambos' || admin.rol === 'informales') {
-          if (payload.new.abonos > payload.old.abonos) {
-            addNotificacion('Abono Registrado', `Nuevo pago de ${payload.new.nombre_negocio}`, 'informales');
-            setRefreshKey(k => k + 1);
-          }
-        }
-      })
-      // Canal para NUEVOS negocios Informales (INSERT)
-      .on('postgres_changes', {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'negocios_informales'
-      }, (payload) => {
-        if (admin.rol === 'ambos' || admin.rol === 'informales') {
-          addNotificacion('Negocio Nuevo', `Se registró el negocio: ${payload.new.nombre_negocio}`, 'informales');
-          setRefreshKey(k => k + 1);
-        }
-      })
-      // Canal para Evidencias (INSERT)
-      .on('postgres_changes', {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'evidencias'
-      }, (payload) => {
-        if (admin.rol === 'ambos') {
-          addNotificacion('Nueva Evidencia', `Se cargó una prueba fotográfica`, 'evidencia');
-          setRefreshKey(k => k + 1);
-        }
-      })
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(msgChannel);
-    };
+    // El sistema de notificaciones en tiempo real ha sido desactivado por solicitud
   }, [admin]);
 
   const tabsConfig = [
@@ -354,31 +318,36 @@ function App() {
     { id: 'evidencias', label: 'EVIDENCIAS', labelShort: 'V', icon: AlertCircle, color: 'amber', bgColor: 'bg-amber-50', textColor: 'text-amber-600', hoverColor: 'hover:bg-amber-50' },
     { id: 'empleados', label: 'EMPLEADOS', labelShort: 'U', icon: Users, color: 'emerald', bgColor: 'bg-emerald-50', textColor: 'text-emerald-600', hoverColor: 'hover:bg-emerald-50' },
     { id: 'lista_negra', label: 'LISTA NEGRA', labelShort: 'LN', icon: ShieldAlert, color: 'red', bgColor: 'bg-red-50', textColor: 'text-red-600', hoverColor: 'hover:bg-red-50' },
-    { id: 'notificaciones', label: 'NOTIFICACIONES', labelShort: 'N', icon: Bell, color: 'purple', bgColor: 'bg-purple-50', textColor: 'text-purple-600', hoverColor: 'hover:bg-purple-50' },
     { id: 'ajustes', label: 'AJUSTES', labelShort: 'A', icon: Settings, color: 'gray', bgColor: 'bg-gray-100', textColor: 'text-gray-800', hoverColor: 'hover:bg-gray-100' }
   ];
 
   const tabs = tabsConfig.filter(t => {
-    // Si es un rol de empleado (empieza con empleado_)
-    if (admin?.rol?.startsWith('empleado')) {
-      if (t.id === 'notificaciones') return true;
-      if (admin.rol === 'empleado_parqueo' && t.id === 'parqueadero') return true;
-      if (admin.rol === 'empleado_informales' && t.id === 'informales') return true;
-      if (admin.rol === 'empleado_ambos' && (t.id === 'parqueadero' || t.id === 'informales')) return true;
-      // Compatibilidad con rol 'empleado' antiguo
-      if (admin.rol === 'empleado' && (t.id === 'parqueadero' || t.id === 'informales')) return true;
-      return false;
+    // Si es un rol de empleado (empieza con empleado_ o es solo empleado)
+    const esEmpleado = admin?.rol?.startsWith('empleado') || admin?.rol === 'empleado';
+    
+    if (esEmpleado) {
+      // Pestañas permitidas para empleados según solicitud: Informales, Evidencias, Lista Negra
+      // Además de notificaciones y ajustes que son básicos
+      const permitidas = ['informales', 'evidencias', 'lista_negra', 'ajustes'];
+      return permitidas.includes(t.id);
     }
 
-    // Filtrado por módulo seleccionado
+    // Filtrado por módulo seleccionado para Admins
     if (selectedModule === 'parqueadero' && t.id === 'informales') return false;
     if (selectedModule === 'informales' && t.id === 'parqueadero') return false;
     
-    // Restricción de gestión de empleados y lista negra para no-admins
-    if (admin?.rol?.startsWith('empleado') && (t.id === 'empleados' || t.id === 'lista_negra')) return false;
-
     return true;
   });
+
+  const formatRol = (rol) => {
+    if (!rol) return '';
+    if (rol === 'admin_master') return 'Master Admin';
+    if (rol.startsWith('empleado')) {
+      const area = rol.split('_')[1];
+      return area ? `Empleado ${area}` : 'Empleado';
+    }
+    return `Admin ${rol}`;
+  };
 
   const handleMenuToggle = () => {
     setMenuAbierto(!menuAbierto);
@@ -583,7 +552,7 @@ function App() {
                 />
                 <div className="hidden sm:block text-left">
                   <p className="text-[8px] font-bold opacity-70 uppercase tracking-tighter leading-none mb-1">
-                    {admin?.rol?.split('_')[0]}
+                    {admin?.rol?.startsWith('empleado') ? 'Empleado' : 'Admin'}
                   </p>
                   <p className="text-xs font-black leading-none">{admin?.nombre_completo?.split(' ')[0] || admin?.username}</p>
                 </div>
@@ -604,10 +573,15 @@ function App() {
                 <button
                   key={item.id}
                   onClick={() => handleTabChange(item.id)}
-                  className={`flex-1 min-w-[120px] py-3 rounded-lg font-bold transition-all flex items-center justify-center gap-3 ${activeClasses}`}
+                  className={`flex-1 min-w-[120px] py-3 rounded-lg font-bold transition-all flex items-center justify-center gap-3 relative ${activeClasses}`}
                 >
                   <Icon size={20} />
                   <span>{item.label}</span>
+                  {item.id === 'notificaciones' && notificaciones.filter(n => n.nuevo && esNotificacionRelevante(n.categoria)).length > 0 && (
+                    <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-rose-500 text-[10px] text-white shadow-lg animate-bounce">
+                      {notificaciones.filter(n => n.nuevo && esNotificacionRelevante(n.categoria)).length}
+                    </span>
+                  )}
                 </button>
               );
             })}
@@ -622,6 +596,7 @@ function App() {
               <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
                 <div className="lg:col-span-1">
                   <RegistroEntrada 
+                    admin={admin}
                     onRegistroExitoso={() => {
                       setRefreshKey(k => k + 1);
                       showNotification('Vehículo registrado exitosamente', 'success');
@@ -629,7 +604,11 @@ function App() {
                   />
                 </div>
                 <div className="lg:col-span-3">
-                  <ListaActivos refreshKey={refreshKey} onVehiculoSalida={() => showNotification('Vehículo retirado del sistema', 'success')} />
+                  <ListaActivos 
+                    admin={admin}
+                    refreshKey={refreshKey} 
+                    onVehiculoSalida={() => showNotification('Vehículo retirado del sistema', 'success')} 
+                  />
                 </div>
               </div>
             )}
@@ -686,6 +665,7 @@ function App() {
               >
                 <ModuloNotificaciones 
                   notificaciones={notificaciones} 
+                  selectedModule={selectedModule}
                   onClear={() => {
                     setNotificaciones([]);
                     localStorage.removeItem('uparqueo_notificaciones');
@@ -817,7 +797,9 @@ function App() {
                     </div>
                   </div>
                   <h3 className="text-2xl font-black">{admin?.username}</h3>
-                  <span className="bg-white/20 px-4 py-1 rounded-full text-xs font-bold uppercase tracking-widest mt-2">{admin?.rol}</span>
+                  <span className="bg-white/20 px-4 py-1 rounded-full text-xs font-bold uppercase tracking-widest mt-2">
+                    {formatRol(admin?.rol)}
+                  </span>
                 </div>
                 <button onClick={() => setMostrarPerfil(false)} className="absolute top-6 right-6 text-white/50 hover:text-white transition-colors">
                   <X size={24} />

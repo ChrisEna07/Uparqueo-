@@ -1,5 +1,5 @@
 import { supabase } from '../lib/supabase';
-
+import { registrarAuditoria } from './auditService';
 /**
  * Calcula la deuda basada en: (Días calendario + Días manuales) * Tarifa - Abonos
  * @param {Object} negocio - El objeto del negocio desde la DB
@@ -103,13 +103,15 @@ export const getLimiteDiasInformal = async () => {
 /**
  * Registra un nuevo abono sumándolo al acumulado actual
  */
-export const registrarAbono = async (id, abonoAnterior, nuevoAbono) => {
+export const registrarAbono = async (id, abonoAnterior, nuevoAbono, adminUsername = 'sistema', nombreNegocio = '') => {
   const sumaTotal = parseFloat(abonoAnterior || 0) + parseFloat(nuevoAbono);
   
   // 1. Actualizar el acumulado en el negocio
   const { error: errorUpdate } = await supabase
     .from('negocios_informales')
-    .update({ abonos: sumaTotal })
+    .update({ 
+      abonos: sumaTotal
+    })
     .eq('id', id);
 
   if (errorUpdate) throw errorUpdate;
@@ -120,10 +122,15 @@ export const registrarAbono = async (id, abonoAnterior, nuevoAbono) => {
     .insert([{
       negocio_id: id,
       monto: parseFloat(nuevoAbono),
+      registrado_por: adminUsername,
       fecha: new Date().toISOString()
     }]);
 
-  if (errorHistorial) console.error("Error al guardar historial de abono:", errorHistorial);
+  if (errorHistorial) {
+    console.error("Error al guardar historial de abono:", errorHistorial);
+  } else {
+    await registrarAuditoria('informales', 'ABONO', `Abono de $${parseFloat(nuevoAbono).toLocaleString()} al negocio ${nombreNegocio || `ID #${id.slice(0,5)}`}`, adminUsername);
+  }
 };
 
 /**
@@ -148,7 +155,7 @@ export const getHistorialAbonos = async (negocioId) => {
 /**
  * Agrega días adicionales manualmente
  */
-export const agregarDiasManuales = async (id, diasActuales, diasNuevos = 1) => {
+export const agregarDiasManuales = async (id, diasActuales, diasNuevos = 1, adminUsername = 'sistema', nombreNegocio = '') => {
   try {
     const { error } = await supabase
       .from('negocios_informales')
@@ -156,6 +163,7 @@ export const agregarDiasManuales = async (id, diasActuales, diasNuevos = 1) => {
       .eq('id', id);
       
     if (error) throw error;
+    await registrarAuditoria('informales', 'EXTENSION_DIAS', `Se agregaron ${diasNuevos} días al negocio ${nombreNegocio || `ID #${id.slice(0,5)}`}`, adminUsername);
     return { success: true };
   } catch (error) {
     console.error("Error en agregarDiasManuales:", error);
@@ -166,7 +174,7 @@ export const agregarDiasManuales = async (id, diasActuales, diasNuevos = 1) => {
 /**
  * Cambia el estado (activar/desactivar) de un negocio
  */
-export const desactivarNegocio = async (id, nuevoEstado) => {
+export const desactivarNegocio = async (id, nuevoEstado, adminUsername = 'sistema', nombreNegocio = '') => {
   try {
     const { error } = await supabase
       .from('negocios_informales')
@@ -174,6 +182,7 @@ export const desactivarNegocio = async (id, nuevoEstado) => {
       .eq('id', id);
       
     if (error) throw error;
+    await registrarAuditoria('informales', 'ESTADO', `El negocio ${nombreNegocio || `ID #${id.slice(0,5)}`} fue ${nuevoEstado ? 'activado' : 'desactivado'}`, adminUsername);
     return { success: true };
   } catch (error) {
     console.error("Error en desactivarNegocio:", error);
@@ -185,7 +194,7 @@ export const desactivarNegocio = async (id, nuevoEstado) => {
 /**
  * Crea un nuevo registro de negocio informal
  */
-export const registrarNegocio = async (datos) => {
+export const registrarNegocio = async (datos, adminUsername = 'sistema') => {
   try {
     // Solo enviamos los campos que existen en la DB según la captura del usuario
     const { nombre_cliente, nombre_negocio, celular, valor_diario } = datos;
@@ -200,11 +209,13 @@ export const registrarNegocio = async (datos) => {
         activo: true,
         abonos: 0,
         dias_manuales: 0,
+        registrado_por: adminUsername,
         fecha_inicio: new Date().toISOString().split('T')[0]
       }])
       .select();
       
     if (error) throw error;
+    await registrarAuditoria('informales', 'CREACION', `Se creó el negocio ${nombre_negocio}`, adminUsername);
     return { success: true, data };
   } catch (error) {
     console.error("Error en registrarNegocio:", error);

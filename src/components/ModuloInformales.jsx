@@ -5,7 +5,7 @@ import {
   Trash2, AlertCircle, CheckCircle, 
   Calendar, Clock, User, Phone, MapPin,
   MoreVertical, Edit2, Power, History,
-  Loader2, ArrowRight, FileText, X as XIcon
+  TrendingUp, Loader2, ArrowRight, FileText, X as XIcon
 } from 'lucide-react';
 import { 
   getNegociosInformales, 
@@ -19,11 +19,12 @@ import { generarPDFInformal } from '../services/pdfService';
 import { supabase } from '../lib/supabase';
 import Swal from 'sweetalert2';
 
-const ModuloInformales = () => {
+const ModuloInformales = ({ admin }) => {
   const [negocios, setNegocios] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [procesando, setProcesando] = useState(false);
   const [busqueda, setBusqueda] = useState('');
+  const [filtroEspecial, setFiltroEspecial] = useState('todos'); // todos, al_dia, deudores
   const [mostrarForm, setMostrarForm] = useState(false);
   const [montoAbono, setMontoAbono] = useState({});
 
@@ -38,6 +39,20 @@ const ModuloInformales = () => {
   useEffect(() => {
     cargarNegocios();
     obtenerTarifa();
+
+    // Sincronización en tiempo real silenciosa
+    const channel = supabase.channel('sync_informales')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'negocios_informales' }, () => {
+        cargarNegocios();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'historial_pagos_informales' }, () => {
+        cargarNegocios();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   const obtenerTarifa = async () => {
@@ -67,7 +82,7 @@ const ModuloInformales = () => {
       const res = await registrarNegocio({ 
         ...form, 
         valor_diario: tarifaGlobal
-      });
+      }, admin?.username || 'admin');
       if (res.success) {
         Swal.close();
         await Swal.fire('¡Éxito!', 'Negocio registrado correctamente', 'success');
@@ -106,7 +121,8 @@ const ModuloInformales = () => {
       });
 
       try {
-        await registrarAbono(id, abonosActuales, valor);
+        const negocio = negocios.find(n => n.id === id);
+        await registrarAbono(id, abonosActuales, valor, admin?.username || 'admin', negocio?.nombre_negocio);
         Swal.close();
         await Swal.fire('¡Abono Registrado!', `$${valor.toLocaleString()}`, 'success');
         setMontoAbono({ ...montoAbono, [id]: '' });
@@ -142,7 +158,7 @@ const ModuloInformales = () => {
       });
 
       try {
-        await registrarAbono(negocio.id, negocio.abonos_hoy, faltante);
+        await registrarAbono(negocio.id, negocio.abonos, faltante, admin?.username || 'admin', negocio.nombre_negocio);
         Swal.close();
         await Swal.fire('Cuenta Liquidada', 'Se ha pagado el total del día', 'success');
         cargarNegocios();
@@ -172,7 +188,8 @@ const ModuloInformales = () => {
       });
 
       try {
-        await agregarDiasManuales(id, parseInt(diasActuales), parseInt(dias));
+        const negocio = negocios.find(n => n.id === id);
+        await agregarDiasManuales(id, parseInt(diasActuales), parseInt(dias), admin?.username || 'admin', negocio?.nombre_negocio);
         Swal.close();
         await Swal.fire('¡Días Agregados!', '', 'success');
         cargarNegocios();
@@ -201,7 +218,8 @@ const ModuloInformales = () => {
       });
 
       try {
-        await desactivarNegocio(id, !estadoActual);
+        const negocio = negocios.find(n => n.id === id);
+        await desactivarNegocio(id, !estadoActual, admin?.username || 'admin', negocio?.nombre_negocio);
         Swal.close();
         cargarNegocios();
       } catch (err) {
@@ -212,10 +230,22 @@ const ModuloInformales = () => {
     }
   };
 
-  const negociosFiltrados = negocios.filter(n => 
-    n.nombre_negocio.toLowerCase().includes(busqueda.toLowerCase()) ||
-    n.nombre_cliente.toLowerCase().includes(busqueda.toLowerCase())
-  );
+  const negociosFiltrados = negocios.filter(n => {
+    const coincideBusqueda = n.nombre_negocio.toLowerCase().includes(busqueda.toLowerCase()) ||
+                             n.nombre_cliente.toLowerCase().includes(busqueda.toLowerCase());
+    
+    if (filtroEspecial === 'al_dia') {
+      return coincideBusqueda && n.deuda_acumulada <= 0;
+    }
+    if (filtroEspecial === 'deudores') {
+      return coincideBusqueda && n.deuda_acumulada >= (tarifaGlobal * 3);
+    }
+    return coincideBusqueda;
+  });
+
+  const totalRecaudado = negocios.reduce((sum, n) => sum + (n.abonos || 0), 0);
+  const alDiaCount = negocios.filter(n => n.activo && n.deuda_acumulada <= 0).length;
+  const deudoresCount = negocios.filter(n => n.activo && n.deuda_acumulada >= (tarifaGlobal * 3)).length;
 
   const clientesAtrasados = negociosFiltrados.filter(n => n.activo && n.deuda_acumulada >= (tarifaGlobal * 7));
 
@@ -235,6 +265,54 @@ const ModuloInformales = () => {
         >
           <Plus size={20} /> Registrar Nuevo Puesto
         </button>
+      </div>
+
+      {/* METRICAS RAPIDAS */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        <motion.button 
+          whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
+          onClick={() => setFiltroEspecial('todos')}
+          className={`p-6 rounded-[2rem] border-2 transition-all text-left ${filtroEspecial === 'todos' ? 'bg-orange-600 text-white border-orange-600 shadow-xl shadow-orange-100' : 'bg-white text-gray-800 border-gray-100 shadow-sm hover:border-orange-200'}`}
+        >
+          <div className="flex justify-between items-center mb-4">
+            <div className={`p-3 rounded-2xl ${filtroEspecial === 'todos' ? 'bg-white/20' : 'bg-orange-50 text-orange-600'}`}>
+              <TrendingUp size={24} />
+            </div>
+            <span className={`text-[10px] font-black uppercase tracking-widest ${filtroEspecial === 'todos' ? 'text-white/60' : 'text-gray-400'}`}>Recaudado Total</span>
+          </div>
+          <p className="text-2xl font-black">${negocios.reduce((sum, n) => sum + (n.abonos || 0), 0).toLocaleString()}</p>
+          <p className={`text-[10px] font-bold mt-1 ${filtroEspecial === 'todos' ? 'text-white/60' : 'text-gray-400'}`}>Ver todos los negocios</p>
+        </motion.button>
+
+        <motion.button 
+          whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
+          onClick={() => setFiltroEspecial('al_dia')}
+          className={`p-6 rounded-[2rem] border-2 transition-all text-left ${filtroEspecial === 'al_dia' ? 'bg-emerald-600 text-white border-emerald-600 shadow-xl shadow-emerald-100' : 'bg-white text-gray-800 border-gray-100 shadow-sm hover:border-emerald-200'}`}
+        >
+          <div className="flex justify-between items-center mb-4">
+            <div className={`p-3 rounded-2xl ${filtroEspecial === 'al_dia' ? 'bg-white/20' : 'bg-emerald-50 text-emerald-600'}`}>
+              <CheckCircle size={24} />
+            </div>
+            <span className={`text-[10px] font-black uppercase tracking-widest ${filtroEspecial === 'al_dia' ? 'text-white/60' : 'text-gray-400'}`}>Al Día</span>
+          </div>
+          <p className="text-2xl font-black">{alDiaCount} Negocios</p>
+          <p className={`text-[10px] font-bold mt-1 ${filtroEspecial === 'al_dia' ? 'text-white/60' : 'text-gray-400'}`}>Sin deudas pendientes</p>
+        </motion.button>
+
+        <motion.button 
+          whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
+          onClick={() => setFiltroEspecial('deudores')}
+          className={`p-6 rounded-[2rem] border-2 transition-all text-left ${filtroEspecial === 'deudores' ? 'bg-rose-600 text-white border-rose-600 shadow-xl shadow-rose-100' : 'bg-white text-gray-800 border-gray-100 shadow-sm hover:border-rose-200'}`}
+        >
+          <div className="flex justify-between items-center mb-4">
+            <div className={`p-3 rounded-2xl ${filtroEspecial === 'deudores' ? 'bg-white/20' : 'bg-rose-50 text-rose-600'}`}>
+              <AlertCircle size={24} />
+            </div>
+            <span className={`text-[10px] font-black uppercase tracking-widest ${filtroEspecial === 'deudores' ? 'text-white/60' : 'text-gray-400'}`}>Mora (+3 días)</span>
+          </div>
+          <p className="text-2xl font-black">{deudoresCount} Negocios</p>
+          <p className={`text-[10px] font-bold mt-1 ${filtroEspecial === 'deudores' ? 'text-white/60' : 'text-gray-400'}`}>Deuda crítica detectada</p>
+        </motion.button>
       </div>
 
       {/* BUSCADOR */}
@@ -417,8 +495,8 @@ const ModuloInformales = () => {
                 </div>
                 <div className="space-y-6">
                   <div>
-                    <label className="text-[10px] font-black text-gray-400 uppercase ml-2 mb-2 block tracking-widest">Celular de Contacto</label>
-                    <input type="tel" required value={form.celular} onChange={e => setForm({...form, celular: e.target.value})} className="w-full bg-gray-50 border border-gray-200 rounded-2xl p-4 font-bold outline-none focus:ring-4 focus:ring-orange-100" placeholder="Ej: 300 123 4567"/>
+                    <label className="text-[10px] font-black text-gray-400 uppercase ml-2 mb-2 block tracking-widest">Celular de Contacto (Opcional)</label>
+                    <input type="tel" value={form.celular} onChange={e => setForm({...form, celular: e.target.value})} className="w-full bg-gray-50 border border-gray-200 rounded-2xl p-4 font-bold outline-none focus:ring-4 focus:ring-orange-100" placeholder="Ej: 300 123 4567"/>
                   </div>
                   <div className="bg-orange-50 p-6 rounded-2xl border border-orange-100">
                     <div className="flex justify-between items-center">

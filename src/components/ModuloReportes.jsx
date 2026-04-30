@@ -3,10 +3,12 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { 
   FileText, Download, Calendar, BarChart2, 
   ChevronRight, ArrowLeft, Printer, Table,
-  TrendingUp, Users, Car, Bike, Loader2
+  TrendingUp, Users, Car, Bike, Loader2, Store, Plus,
+  Search, ShieldAlert
 } from 'lucide-react';
 import { getReportePorFechas } from '../services/parqueoService';
 import { getReporteInformal, getHistorialAbonos } from '../services/informalService';
+import { getAuditoria } from '../services/auditService';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
@@ -19,10 +21,36 @@ const ModuloReportes = ({ selectedModule = 'parqueadero' }) => {
   const [negocioSel, setNegocioSel] = useState(null);
   const [historialAbonos, setHistorialAbonos] = useState([]);
   const [cargandoHistorial, setCargandoHistorial] = useState(false);
+  const [auditoriaData, setAuditoriaData] = useState([]);
+  const [busquedaAuditoria, setBusquedaAuditoria] = useState('');
+  const [pestañaSecundaria, setPestañaSecundaria] = useState('general');
+
+  // Helper para filtro de fechas en interfaz
+  const fechasFiltro = (() => {
+    const hoy = new Date();
+    if (tipoReporte === 'diario') {
+      const hoyStr = hoy.toISOString().split('T')[0];
+      return { inicio: hoyStr, fin: hoyStr };
+    } else if (tipoReporte === 'semanal') {
+      const haceUnaSemana = new Date(hoy);
+      haceUnaSemana.setDate(hoy.getDate() - 7);
+      return { inicio: haceUnaSemana.toISOString().split('T')[0], fin: hoy.toISOString().split('T')[0] };
+    } else {
+      const haceUnMes = new Date(hoy);
+      haceUnMes.setMonth(hoy.getMonth() - 1);
+      return { inicio: haceUnMes.toISOString().split('T')[0], fin: hoy.toISOString().split('T')[0] };
+    }
+  })();
 
   useEffect(() => {
     generarReporte(tipoReporte);
-  }, [tipoReporte]);
+    cargarAuditoria();
+  }, [tipoReporte, selectedModule]);
+
+  const cargarAuditoria = async () => {
+    const res = await getAuditoria(selectedModule);
+    if (res.success) setAuditoriaData(res.data);
+  };
 
   const generarReporte = async (tipo) => {
     setCargando(true);
@@ -90,8 +118,8 @@ const ModuloReportes = ({ selectedModule = 'parqueadero' }) => {
     }
 
     const tableHeaders = isParqueo 
-      ? [['Fecha/Hora', 'Placa', 'Tipo', 'Monto', 'Cliente']]
-      : [['Negocio', 'Dueño', 'Celular', 'Recaudado', 'Estado']];
+      ? [['Fecha/Hora', 'Placa', 'Tipo', 'Monto', 'Usuario', 'Cliente']]
+      : [['Negocio', 'Dueño', 'Celular', 'Recaudado', 'Usuario', 'Estado']];
 
     const tableData = reporteData.data.map(reg => {
       if (isParqueo) {
@@ -100,6 +128,7 @@ const ModuloReportes = ({ selectedModule = 'parqueadero' }) => {
           reg.placa || '---',
           (reg.tipo_vehiculo || '---').toUpperCase(),
           `$${(reg.total_pagar || 0).toLocaleString()}`,
+          reg.usuario_recibe || reg.registrado_por || '---',
           reg.cliente_nombre || '---'
         ];
       } else {
@@ -108,6 +137,7 @@ const ModuloReportes = ({ selectedModule = 'parqueadero' }) => {
           reg.nombre_cliente || '---',
           reg.celular || '---',
           `$${(reg.abonos || 0).toLocaleString()}`,
+          reg.registrado_por || '---',
           (reg.activo ? 'ACTIVO' : 'INACTIVO')
         ];
       }
@@ -136,6 +166,7 @@ const ModuloReportes = ({ selectedModule = 'parqueadero' }) => {
           'Placa': reg.placa,
           'Tipo': (reg.tipo_vehiculo || '').toUpperCase(),
           'Monto Pagado': reg.total_pagar || 0,
+          'Usuario Recibe': reg.usuario_recibe || reg.registrado_por || '---',
           'Nombre Cliente': reg.cliente_nombre || 'N/A'
         };
       } else {
@@ -144,6 +175,7 @@ const ModuloReportes = ({ selectedModule = 'parqueadero' }) => {
           'Nombre Dueño': reg.nombre_cliente,
           'Celular': reg.celular,
           'Total Recaudado': reg.abonos || 0,
+          'Usuario': reg.registrado_por || '---',
           'Deuda Actual': reg.deuda_acumulada || 0,
           'Estado': reg.activo ? 'Activo' : 'Inactivo',
           'Fecha Inicio': reg.fecha_inicio
@@ -189,8 +221,26 @@ const ModuloReportes = ({ selectedModule = 'parqueadero' }) => {
           </div>
         </div>
 
-        {/* Resumen Cards */}
-        <div className="p-5 md:p-8">
+        {/* Pestañas Principales */}
+        <div className="flex border-b border-gray-200">
+          <button 
+            onClick={() => setPestañaSecundaria('general')}
+            className={`flex-1 py-4 font-black uppercase tracking-widest text-xs transition-all ${pestañaSecundaria === 'general' ? 'text-blue-600 border-b-4 border-blue-600 bg-blue-50/50' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-50'}`}
+          >
+            Vista General
+          </button>
+          <button 
+            onClick={() => setPestañaSecundaria('auditoria')}
+            className={`flex-1 py-4 font-black uppercase tracking-widest text-xs transition-all ${pestañaSecundaria === 'auditoria' ? 'text-purple-600 border-b-4 border-purple-600 bg-purple-50/50' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-50'}`}
+          >
+            Historial de Novedades
+          </button>
+        </div>
+
+        {pestañaSecundaria === 'general' && (
+          <>
+            {/* Resumen Cards */}
+            <div className="p-5 md:p-8">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6 mb-8">
             <div className="bg-gradient-to-br from-green-50 to-emerald-50 p-6 rounded-2xl border border-green-100">
               <div className="flex justify-between items-start mb-4">
@@ -268,16 +318,15 @@ const ModuloReportes = ({ selectedModule = 'parqueadero' }) => {
                       <tr>
                         <th className="px-6 py-4">Fecha/Hora</th>
                         <th className="px-6 py-4">Placa</th>
-                        <th className="px-6 py-4">Tipo</th>
                         <th className="px-6 py-4">Monto</th>
+                        <th className="px-6 py-4">Usuario</th>
                         <th className="px-6 py-4">Cliente</th>
                       </tr>
                     ) : (
                       <tr>
                         <th className="px-6 py-4">Negocio</th>
-                        <th className="px-6 py-4">Cliente</th>
-                        <th className="px-6 py-4">Celular</th>
                         <th className="px-6 py-4">Recaudado</th>
+                        <th className="px-6 py-4">Usuario</th>
                         <th className="px-6 py-4">Estado</th>
                       </tr>
                     )}
@@ -295,15 +344,13 @@ const ModuloReportes = ({ selectedModule = 'parqueadero' }) => {
                                 {reg.placa}
                               </span>
                             </td>
-                            <td className="px-6 py-4">
-                              <span className={`px-3 py-1 rounded-full text-xs font-bold ${
-                                reg.tipo_vehiculo === 'carro' ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'
-                              }`}>
-                                {reg.tipo_vehiculo.toUpperCase()}
-                              </span>
-                            </td>
                             <td className="px-6 py-4 font-bold text-gray-900">
                               ${(reg.total_pagar || 0).toLocaleString()}
+                            </td>
+                            <td className="px-6 py-4">
+                               <span className="text-[10px] font-black text-blue-600 bg-blue-50 px-2 py-1 rounded-lg uppercase">
+                                 @{reg.usuario_recibe || reg.registrado_por || '---'}
+                               </span>
                             </td>
                             <td className="px-6 py-4 text-sm text-gray-600">
                               {reg.cliente_nombre || '---'}
@@ -312,9 +359,12 @@ const ModuloReportes = ({ selectedModule = 'parqueadero' }) => {
                         ) : (
                           <>
                             <td className="px-6 py-4 font-bold text-gray-900">{reg.nombre_negocio}</td>
-                            <td className="px-6 py-4 text-sm text-gray-600">{reg.nombre_cliente}</td>
-                            <td className="px-6 py-4 text-sm text-gray-500">{reg.celular}</td>
                             <td className="px-6 py-4 font-black text-emerald-600">${(reg.abonos || 0).toLocaleString()}</td>
+                            <td className="px-6 py-4">
+                               <span className="text-[10px] font-black text-orange-600 bg-orange-50 px-2 py-1 rounded-lg uppercase">
+                                 @{reg.registrado_por || '---'}
+                               </span>
+                            </td>
                             <td className="px-6 py-4">
                               <div className="flex items-center gap-2">
                                 <span className={`px-3 py-1 rounded-full text-[10px] font-black ${reg.activo ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
@@ -345,7 +395,148 @@ const ModuloReportes = ({ selectedModule = 'parqueadero' }) => {
               </div>
             )}
           </div>
-        </div>
+          
+          {selectedModule === 'informales' && (
+            <div className="mt-8 p-6 bg-white rounded-[2rem] border border-gray-100 shadow-sm">
+              <h3 className="font-bold text-gray-800 flex items-center gap-2 mb-4 uppercase text-[10px] tracking-widest">
+                <Store size={16} className="text-orange-600" /> 
+                Actividad: Nuevos Negocios Registrados
+              </h3>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-[10px]">
+                  <thead className="bg-gray-50 text-gray-500 uppercase font-black">
+                    <tr>
+                      <th className="px-4 py-3">Fecha de Creación</th>
+                      <th className="px-4 py-3">Nombre del Negocio</th>
+                      <th className="px-4 py-3">Registrado Por</th>
+                      <th className="px-4 py-3">Fecha Inicio Cobro</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {reporteData?.data
+                      ?.filter(reg => {
+                        if (!reg.created_at) return false;
+                        const createdDate = new Date(reg.created_at).toISOString().split('T')[0];
+                        return createdDate >= fechasFiltro.inicio && createdDate <= fechasFiltro.fin;
+                      })
+                      .sort((a,b) => new Date(b.created_at) - new Date(a.created_at))
+                      .map(reg => (
+                      <tr key={`new-${reg.id}`} className="hover:bg-orange-50/30 transition-colors">
+                        <td className="px-4 py-3 text-gray-400 font-medium">
+                          {new Date(reg.created_at).toLocaleString()}
+                        </td>
+                        <td className="px-4 py-3 font-black text-gray-800 uppercase tracking-tighter">{reg.nombre_negocio}</td>
+                        <td className="px-4 py-3">
+                          <span className="bg-orange-100 text-orange-700 px-2 py-1 rounded-lg font-black">
+                            @{reg.registrado_por || '---'}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-gray-600 font-bold">{reg.fecha_inicio}</td>
+                      </tr>
+                    ))}
+                    {reporteData?.data?.filter(reg => {
+                        if (!reg.created_at) return false;
+                        const createdDate = new Date(reg.created_at).toISOString().split('T')[0];
+                        return createdDate >= fechasFiltro.inicio && createdDate <= fechasFiltro.fin;
+                      }).length === 0 && (
+                      <tr>
+                        <td colSpan="4" className="px-4 py-6 text-center text-gray-400 font-medium italic">
+                          No hay negocios registrados en este rango de fechas.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+          </div>
+          </>
+        )}
+
+        {pestañaSecundaria === 'auditoria' && (
+          <div className="p-5 md:p-8 bg-gray-50/50 min-h-[500px]">
+            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+              <div className="p-6 border-b border-gray-100 flex flex-col md:flex-row justify-between items-center gap-4 bg-gradient-to-r from-purple-50 to-white">
+                <div>
+                  <h3 className="font-black text-gray-900 text-lg uppercase tracking-tight flex items-center gap-2">
+                    <ShieldAlert className="text-purple-600" size={20} /> Trazabilidad del Sistema
+                  </h3>
+                  <p className="text-gray-500 text-xs font-bold mt-1">Registro inmutable de acciones realizadas</p>
+                </div>
+                <div className="w-full md:w-auto relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <Search className="h-5 w-5 text-gray-400" />
+                  </div>
+                  <input
+                    type="text"
+                    placeholder="Buscar por usuario o acción..."
+                    className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500 font-bold"
+                    value={busquedaAuditoria}
+                    onChange={(e) => setBusquedaAuditoria(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left">
+                  <thead className="bg-gray-50 text-gray-500 text-[10px] uppercase font-black tracking-widest">
+                    <tr>
+                      <th className="px-6 py-4">Fecha / Hora</th>
+                      <th className="px-6 py-4">Usuario</th>
+                      <th className="px-6 py-4">Acción</th>
+                      <th className="px-6 py-4">Descripción Detallada</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {auditoriaData
+                      .filter(a => 
+                        a.usuario.toLowerCase().includes(busquedaAuditoria.toLowerCase()) || 
+                        a.accion.toLowerCase().includes(busquedaAuditoria.toLowerCase()) ||
+                        a.descripcion.toLowerCase().includes(busquedaAuditoria.toLowerCase())
+                      )
+                      .map((log) => (
+                        <tr key={log.id} className="hover:bg-purple-50/30 transition-colors">
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="text-sm font-bold text-gray-900">{new Date(log.created_at).toLocaleDateString()}</div>
+                            <div className="text-[10px] text-gray-500 font-black">{new Date(log.created_at).toLocaleTimeString()}</div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <span className="bg-purple-100 text-purple-700 px-3 py-1 rounded-lg text-xs font-black uppercase tracking-wider">
+                              @{log.usuario}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <span className={`px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest border ${
+                              log.accion === 'CREACION' ? 'bg-blue-50 text-blue-600 border-blue-200' :
+                              log.accion === 'ABONO' ? 'bg-emerald-50 text-emerald-600 border-emerald-200' :
+                              log.accion === 'EXTENSION_DIAS' ? 'bg-orange-50 text-orange-600 border-orange-200' :
+                              log.accion === 'ESTADO' ? 'bg-rose-50 text-rose-600 border-rose-200' :
+                              'bg-gray-50 text-gray-600 border-gray-200'
+                            }`}>
+                              {log.accion}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 text-sm font-bold text-gray-700">
+                            {log.descripcion}
+                          </td>
+                        </tr>
+                      ))}
+                    {auditoriaData.length === 0 && (
+                      <tr>
+                        <td colSpan="4" className="px-6 py-10 text-center text-gray-400 font-bold uppercase tracking-widest text-xs">
+                          No hay registros de auditoría para este módulo.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* MODAL DETALLES ABONOS */}
       <AnimatePresence>
         {negocioSel && (
@@ -369,8 +560,8 @@ const ModuloReportes = ({ selectedModule = 'parqueadero' }) => {
                     {historialAbonos.map((h, i) => (
                       <div key={i} className="flex justify-between items-center p-4 bg-gray-50 rounded-2xl border border-gray-100">
                         <div>
-                          <p className="text-xs font-black text-gray-800">{new Date(h.fecha).toLocaleDateString()}</p>
-                          <p className="text-[10px] text-gray-400 font-bold">{new Date(h.fecha).toLocaleTimeString()}</p>
+                          <p className="text-xs font-black text-gray-800">{new Date(h.fecha).toLocaleDateString()} {new Date(h.fecha).toLocaleTimeString()}</p>
+                          <p className="text-[9px] text-blue-600 font-bold uppercase tracking-widest mt-1">Recibido por: @{h.registrado_por || '---'}</p>
                         </div>
                         <p className="text-lg font-black text-emerald-600">+ ${h.monto.toLocaleString()}</p>
                       </div>
@@ -389,7 +580,6 @@ const ModuloReportes = ({ selectedModule = 'parqueadero' }) => {
           </div>
         )}
       </AnimatePresence>
-    </div>
     </div>
   );
 };

@@ -44,6 +44,16 @@ export const getAdmins = async (currentAdmin = null, selectedModule = null, incl
           return u.rol === 'informales' || u.rol === 'empleado_informales' || u.rol === 'empleado_ambos';
         }
 
+        // Si no hay módulo seleccionado (ej: panel DevTools), inferimos los permisos según el rol del admin actual
+        if (!selectedModule) {
+          if (currentAdmin.rol === 'informales') {
+            return u.rol === 'informales' || u.rol === 'empleado_informales' || u.rol === 'empleado_ambos';
+          }
+          if (currentAdmin.rol === 'parqueadero') {
+            return u.rol === 'parqueadero' || u.rol === 'empleado_parqueo' || u.rol === 'empleado_ambos';
+          }
+        }
+
         return u.rol === currentAdmin.rol;
       });
     } else if (currentAdmin && !includeSelf) {

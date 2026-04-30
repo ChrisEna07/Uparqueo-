@@ -15,9 +15,10 @@ import {
   getTarifas
 } from '../services/parqueoService';
 import { generarPDFHistorialCliente } from '../services/pdfService';
+import { supabase } from '../lib/supabase';
 import Swal from 'sweetalert2';
 
-const ListaActivos = ({ onVehiculoSalida, refreshKey }) => {
+const ListaActivos = ({ onVehiculoSalida, refreshKey, admin }) => {
   const [vehiculos, setVehiculos] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [procesando, setProcesando] = useState(false);
@@ -30,7 +31,18 @@ const ListaActivos = ({ onVehiculoSalida, refreshKey }) => {
   useEffect(() => {
     cargarDatos();
     const timer = setInterval(() => setCurrentTime(new Date()), 60000);
-    return () => clearInterval(timer);
+
+    // Sincronización en tiempo real silenciosa
+    const channel = supabase.channel('sync_parqueo')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'registros_parqueadero' }, payload => {
+        cargarDatos();
+      })
+      .subscribe();
+
+    return () => {
+      clearInterval(timer);
+      supabase.removeChannel(channel);
+    };
   }, [refreshKey]);
 
   const cargarDatos = async () => {
@@ -97,8 +109,8 @@ const ListaActivos = ({ onVehiculoSalida, refreshKey }) => {
     if (motivo) {
       setProcesando(true);
       try {
-        await addToBlacklist(placa, motivo, 'ADMIN_SESSION'); // En producción usar ID real del admin
-        await registrarSalida(id, 0); // Cerramos el registro con $0
+        await addToBlacklist(placa, motivo, admin?.username || 'admin'); // En producción usar ID real del admin
+        await registrarSalida(id, 0, admin?.username || 'admin'); // Cerramos el registro con $0
         await Swal.fire('Bloqueado', 'Cliente agregado a lista negra con éxito.', 'success');
         cargarDatos();
         if (onVehiculoSalida) onVehiculoSalida();
@@ -148,7 +160,7 @@ const ListaActivos = ({ onVehiculoSalida, refreshKey }) => {
 
       if (result.isConfirmed) {
         setProcesando(true);
-        await registrarSalida(id, total);
+        await registrarSalida(id, total, admin?.username || 'admin');
         await Swal.fire('¡Cobro Exitoso!', `Total: $${total.toLocaleString()}`, 'success');
         cargarDatos();
         if (onVehiculoSalida) onVehiculoSalida();

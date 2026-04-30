@@ -10,15 +10,21 @@ const HomePanel = ({ admin, onSelectModule, onLogout }) => {
   // Lógica de permisos avanzada para roles segmentados
   const tienePermiso = (modulo) => {
     if (!admin?.rol) return false;
-    if (admin.rol === 'ambos' || admin.rol === 'admin_master') return true;
     
-    if (modulo === 'parqueadero') {
-      return admin.rol === 'parqueadero' || admin.rol === 'empleado_parqueo' || admin.rol === 'empleado_ambos' || admin.rol === 'empleado';
-    }
+    // El Admin Master o con rol 'ambos' tienen acceso total
+    if (admin.rol === 'admin_master' || admin.rol === 'ambos') return true;
+
+    // Si es un empleado (rol empieza con empleado_ o es solo empleado)
+    const esEmpleado = admin.rol.startsWith('empleado') || admin.rol === 'empleado';
     
-    if (modulo === 'informales') {
-      return admin.rol === 'informales' || admin.rol === 'empleado_informales' || admin.rol === 'empleado_ambos' || admin.rol === 'empleado';
+    if (esEmpleado) {
+      // Por petición, el empleado SOLO puede acceder al módulo de informales
+      return modulo === 'informales';
     }
+
+    // Para administradores de área específicos
+    if (modulo === 'parqueadero') return admin.rol === 'parqueadero';
+    if (modulo === 'informales') return admin.rol === 'informales';
     
     return false;
   };
@@ -59,7 +65,9 @@ const HomePanel = ({ admin, onSelectModule, onLogout }) => {
               <h1 className="text-3xl font-black text-gray-900 dark:text-white tracking-tighter uppercase">UPARQUEO</h1>
               <div className="flex items-center gap-2">
                 <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
-                <p className="text-gray-400 text-xs font-bold uppercase tracking-widest">Admin: <span className="text-gray-600">{admin?.username}</span></p>
+                <p className="text-gray-400 text-xs font-bold uppercase tracking-widest">
+                  {admin?.rol?.startsWith('empleado') ? 'Empleado' : 'Admin'}: <span className="text-gray-600">{admin?.username}</span>
+                </p>
               </div>
             </div>
           </div>

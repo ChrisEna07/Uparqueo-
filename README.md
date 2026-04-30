@@ -41,9 +41,15 @@ Interfaz optimizada para el ingreso rápido de vehículos y cálculo automático
 * **Exportación Profesional:** Generación de reportes financieros y operativos en formato **PDF** y **Excel (XLSX)**.
 * **Filtros Temporales:** Análisis de ingresos diarios, semanales y mensuales.
 
+### 🛡️ Auditoría Avanzada y Trazabilidad (Novedad)
+* **Historial de Novedades:** Registro inmutable (caja negra) de cada transacción importante (abonos, pagos, creación de negocios, suspensiones).
+* **Atribución Precisa:** Cada acción queda guardada con la fecha, hora exacta y el *username* del empleado o administrador que la ejecutó.
+* **Buscador Dinámico:** Interfaz dedicada en reportes para buscar rápidamente cualquier novedad por nombre de negocio, usuario o tipo de acción.
+
 ### 💾 Seguridad y Portabilidad
-* **Modo Desarrollador:** Panel protegido para mantenimiento técnico.
-* **Backups JSON:** Exportación e Importación de toda la base de datos en un solo archivo para respaldos de emergencia.
+* **Modo Desarrollador (Gestión Master):** Panel protegido para mantenimiento técnico y gestión granular de permisos de empleados según el módulo.
+* **Backups JSON Dinámicos:** Exportación e Importación de toda la base de datos (incluyendo históricos de auditoría) en un solo archivo para respaldos.
+* **Protocolo de Reinicio:** Eliminación selectiva o global de datos operativos garantizando un restablecimiento seguro del sistema.
 
 ---
 
@@ -87,6 +93,8 @@ Interfaz optimizada para el ingreso rápido de vehículos y cálculo automático
 * **admins:** Gestión de perfiles y roles (admin/empleado).
 * **registros_parqueadero:** Historial de vehículos y cobros.
 * **negocios_informales:** Seguimiento de puestos y deudas.
+* **historial_pagos_informales:** Registro de todos los abonos realizados.
+* **historial_auditoria:** Caja negra de acciones y transacciones de los usuarios.
 * **mensajes:** Sistema de hilos de comunicación interna.
 * **evidencias:** Almacenamiento de pruebas fotográficas y notas.
 * **configuracion:** Parámetros globales y tarifas.
