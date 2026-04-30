@@ -8,9 +8,10 @@ import ModuloAjustes from './components/ModuloAjustes';
 import ModuloEstadisticas from './components/ModuloEstadisticas';
 import ModuloReportes from './components/ModuloReportes';
 import ModuloEvidencias from './components/ModuloEvidencias';
-import BandejaMensajes from './components/BandejaMensajes';
-import ModuloEmpleados from './components/ModuloEmpleados';
+import ModuloNotificaciones from './components/ModuloNotificaciones';
 import ModuloListaNegra from './components/ModuloListaNegra';
+import ModuloEmpleados from './components/ModuloEmpleados';
+import { Bell } from 'lucide-react';
 import DevTools from './components/DevTools';
 import Login from './components/Login';
 import HomePanel from './components/HomePanel';
@@ -35,13 +36,50 @@ function App() {
   const [devTaps, setDevTaps] = useState(0);
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [showCamera, setShowCamera] = useState(false);
+  const [theme, setTheme] = useState(localStorage.getItem('uparqueo_theme') || 'light');
+  const [fontSize, setFontSize] = useState(parseInt(localStorage.getItem('uparqueo_font_size')) || 16);
+  const [notificaciones, setNotificaciones] = useState(JSON.parse(localStorage.getItem('uparqueo_notificaciones')) || []);
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const menuRef = useRef(null);
 
   const showNotification = (message, type = 'success') => {
     setNotification({ message, type });
-    setTimeout(() => setNotification(null), 3000);
+    // Sonido sutil si es posible
+    try {
+      const audio = new Audio('/notification.mp3');
+      audio.volume = 0.2;
+      audio.play().catch(() => {});
+    } catch (e) {}
+    
+    setTimeout(() => setNotification(null), 4000);
+  };
+
+  const addNotificacion = (titulo, mensaje, categoria) => {
+    const nueva = {
+      id: Date.now(),
+      titulo,
+      mensaje,
+      categoria,
+      tiempo: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      nuevo: true
+    };
+    const updated = [nueva, ...notificaciones].slice(0, 50); // Mantener últimas 50
+    setNotificaciones(updated);
+    localStorage.setItem('uparqueo_notificaciones', JSON.stringify(updated));
+    showNotification(titulo, 'success');
+    sendNativeNotification(titulo, mensaje);
+  };
+
+  const requestNotificationPermission = async () => {
+    if (!('Notification' in window)) return false;
+    
+    const permission = await Notification.requestPermission();
+    if (permission === 'granted') {
+      showNotification('Notificaciones habilitadas correctamente', 'success');
+      return true;
+    }
+    return false;
   };
 
   const sendNativeNotification = (title, body) => {
@@ -56,8 +94,15 @@ function App() {
       setIsScrolled(window.scrollY > 10);
     };
     window.addEventListener('scroll', handleScroll);
+
+    // Aplicar tema y tamaño de letra
+    document.documentElement.classList.toggle('dark', theme === 'dark');
+    document.documentElement.style.setProperty('--base-font-size', `${fontSize}px`);
+    localStorage.setItem('uparqueo_theme', theme);
+    localStorage.setItem('uparqueo_font_size', fontSize.toString());
+
     return () => window.removeEventListener('scroll', handleScroll);
-  }, []);
+  }, [theme, fontSize]);
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -237,16 +282,6 @@ function App() {
     // Canal unificado para todas las notificaciones
     const msgChannel = supabase
       .channel('schema-db-changes')
-      .on('postgres_changes', { 
-        event: 'INSERT', 
-        schema: 'public', 
-        table: 'mensajes',
-        filter: `destinatario_id=eq.${admin.id}`
-      }, (payload) => {
-        showNotification(`Nuevo mensaje de @${payload.new.asunto || 'Sistema'}`, 'success');
-        sendNativeNotification('Nuevo Mensaje', `Tienes un nuevo mensaje en el chat.`);
-        setRefreshKey(k => k + 1);
-      })
       // Canal para Pagos de Parqueo (UPDATE)
       .on('postgres_changes', {
         event: 'UPDATE',
@@ -255,7 +290,7 @@ function App() {
         filter: 'estado=eq.finalizado'
       }, (payload) => {
         if (admin.rol === 'ambos' || admin.rol === 'parqueadero') {
-          showNotification(`Pago recibido: $${payload.new.total_pagar.toLocaleString()} (${payload.new.placa})`, 'success');
+          addNotificacion('Pago Recibido', `Vehículo ${payload.new.placa} finalizó con pago de $${payload.new.total_pagar.toLocaleString()}`, 'parqueo');
           setRefreshKey(k => k + 1);
         }
       })
@@ -263,11 +298,10 @@ function App() {
       .on('postgres_changes', {
         event: 'INSERT',
         schema: 'public',
-        table: 'registros_parqueadero' // O registros_parqueo dependiendo de la tabla
+        table: 'registros_parqueadero'
       }, (payload) => {
         if (admin.rol === 'ambos' || admin.rol === 'parqueadero') {
-          showNotification(`Nuevo vehículo registrado: ${payload.new.placa}`, 'success');
-          sendNativeNotification('Vehículo Nuevo', `Se ha registrado el vehículo ${payload.new.placa} en el parqueadero.`);
+          addNotificacion('Nuevo Ingreso', `Se registró el vehículo ${payload.new.placa}`, 'parqueo');
           setRefreshKey(k => k + 1);
         }
       })
@@ -279,7 +313,7 @@ function App() {
       }, (payload) => {
         if (admin.rol === 'ambos' || admin.rol === 'informales') {
           if (payload.new.abonos > payload.old.abonos) {
-            showNotification(`Nuevo abono: ${payload.new.nombre_negocio}`, 'success');
+            addNotificacion('Abono Registrado', `Nuevo pago de ${payload.new.nombre_negocio}`, 'informales');
             setRefreshKey(k => k + 1);
           }
         }
@@ -291,8 +325,18 @@ function App() {
         table: 'negocios_informales'
       }, (payload) => {
         if (admin.rol === 'ambos' || admin.rol === 'informales') {
-          showNotification(`Nuevo negocio registrado: ${payload.new.nombre_negocio}`, 'success');
-          sendNativeNotification('Negocio Informal Nuevo', `Se ha registrado ${payload.new.nombre_negocio}.`);
+          addNotificacion('Negocio Nuevo', `Se registró el negocio: ${payload.new.nombre_negocio}`, 'informales');
+          setRefreshKey(k => k + 1);
+        }
+      })
+      // Canal para Evidencias (INSERT)
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'evidencias'
+      }, (payload) => {
+        if (admin.rol === 'ambos') {
+          addNotificacion('Nueva Evidencia', `Se cargó una prueba fotográfica`, 'evidencia');
           setRefreshKey(k => k + 1);
         }
       })
@@ -310,14 +354,14 @@ function App() {
     { id: 'evidencias', label: 'EVIDENCIAS', labelShort: 'V', icon: AlertCircle, color: 'amber', bgColor: 'bg-amber-50', textColor: 'text-amber-600', hoverColor: 'hover:bg-amber-50' },
     { id: 'empleados', label: 'EMPLEADOS', labelShort: 'U', icon: Users, color: 'emerald', bgColor: 'bg-emerald-50', textColor: 'text-emerald-600', hoverColor: 'hover:bg-emerald-50' },
     { id: 'lista_negra', label: 'LISTA NEGRA', labelShort: 'LN', icon: ShieldAlert, color: 'red', bgColor: 'bg-red-50', textColor: 'text-red-600', hoverColor: 'hover:bg-red-50' },
-    { id: 'mensajes', label: 'MENSAJES', labelShort: 'M', icon: Menu, color: 'purple', bgColor: 'bg-purple-50', textColor: 'text-purple-600', hoverColor: 'hover:bg-purple-50' },
+    { id: 'notificaciones', label: 'NOTIFICACIONES', labelShort: 'N', icon: Bell, color: 'purple', bgColor: 'bg-purple-50', textColor: 'text-purple-600', hoverColor: 'hover:bg-purple-50' },
     { id: 'ajustes', label: 'AJUSTES', labelShort: 'A', icon: Settings, color: 'gray', bgColor: 'bg-gray-100', textColor: 'text-gray-800', hoverColor: 'hover:bg-gray-100' }
   ];
 
   const tabs = tabsConfig.filter(t => {
     // Si es un rol de empleado (empieza con empleado_)
     if (admin?.rol?.startsWith('empleado')) {
-      if (t.id === 'mensajes') return true;
+      if (t.id === 'notificaciones') return true;
       if (admin.rol === 'empleado_parqueo' && t.id === 'parqueadero') return true;
       if (admin.rol === 'empleado_informales' && t.id === 'informales') return true;
       if (admin.rol === 'empleado_ambos' && (t.id === 'parqueadero' || t.id === 'informales')) return true;
@@ -442,19 +486,38 @@ function App() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex flex-col">
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-950 dark:to-gray-900 text-gray-900 dark:text-gray-100 flex flex-col transition-colors duration-300">
       <AnimatePresence>
         {notification && (
           <motion.div
-            initial={{ opacity: 0, y: -50 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -50 }}
-            className={`fixed top-20 right-4 z-50 flex items-center gap-2 px-6 py-3 rounded-lg shadow-xl ${
-              notification.type === 'success' ? 'bg-green-500' : 'bg-red-500'
-            } text-white`}
+            initial={{ opacity: 0, x: 50, scale: 0.8, filter: 'blur(10px)' }}
+            animate={{ opacity: 1, x: 0, scale: 1, filter: 'blur(0px)' }}
+            exit={{ opacity: 0, x: 50, scale: 0.8, filter: 'blur(10px)' }}
+            className={`fixed top-6 right-6 z-[200] flex flex-col min-w-[320px] rounded-2xl shadow-[0_25px_50px_-12px_rgba(0,0,0,0.5)] backdrop-blur-2xl border border-white/20 overflow-hidden ${
+              notification.type === 'success' 
+                ? 'bg-emerald-600/95 text-white shadow-emerald-500/20' 
+                : 'bg-rose-600/95 text-white shadow-rose-500/20'
+            }`}
           >
-            {notification.type === 'success' ? <CheckCircle size={20} /> : <AlertCircle size={20} />}
-            <span className="font-medium">{notification.message}</span>
+            <div className="flex items-center gap-4 px-6 py-4">
+              <div className="bg-white/20 p-2.5 rounded-xl shadow-inner">
+                {notification.type === 'success' ? <CheckCircle size={28} /> : <AlertCircle size={28} />}
+              </div>
+              <div className="flex-1">
+                <p className="font-black text-[10px] uppercase tracking-[0.3em] opacity-60 leading-none mb-1.5">Aviso del Sistema</p>
+                <p className="font-black text-sm tracking-tight">{notification.message}</p>
+              </div>
+              <button onClick={() => setNotification(null)} className="p-1 hover:bg-white/10 rounded-lg transition-colors">
+                <X size={20} />
+              </button>
+            </div>
+            {/* Barra de progreso animada */}
+            <motion.div 
+              initial={{ width: '100%' }}
+              animate={{ width: '0%' }}
+              transition={{ duration: 4, ease: "linear" }}
+              className="h-1.5 bg-white/30 self-start"
+            />
           </motion.div>
         )}
       </AnimatePresence>
@@ -497,9 +560,9 @@ function App() {
               {deferredPrompt && (
                 <button 
                   onClick={handleInstallApp}
-                  className="hidden lg:flex bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest border border-white/10 transition-all items-center gap-2 active:scale-95 shadow-lg shadow-emerald-900/20"
+                  className="flex bg-emerald-500 hover:bg-emerald-600 text-white px-3 py-2 md:px-4 md:py-2.5 rounded-xl text-[8px] md:text-[10px] font-black uppercase tracking-widest border border-white/10 transition-all items-center gap-1 md:gap-2 active:scale-95 shadow-lg shadow-emerald-900/20"
                 >
-                  <Download size={16} /> Instalar Web App
+                  <Download size={16} /> <span className="hidden xs:block">Instalar App</span>
                 </button>
               )}
  
@@ -532,11 +595,11 @@ function App() {
 
       <div className="sticky top-0 z-20">
         <nav className="hidden md:block w-full px-4 -mt-6 relative z-10">
-          <div className="bg-white rounded-xl shadow-lg p-1 flex flex-wrap gap-1 max-w-full">
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-1 flex flex-wrap gap-1 max-w-full border border-gray-100 dark:border-gray-700 transition-colors">
             {tabs.map((item) => {
               const Icon = item.icon;
               const isActive = tab === item.id;
-              const activeClasses = isActive ? `${item.bgColor} ${item.textColor} shadow-lg` : 'text-gray-600 hover:bg-gray-50';
+              const activeClasses = isActive ? `${item.bgColor} ${item.textColor} shadow-lg` : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50';
               return (
                 <button
                   key={item.id}
@@ -616,12 +679,18 @@ function App() {
               </motion.div>
             )}
 
-            {tab === 'mensajes' && (
+            {tab === 'notificaciones' && (
               <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
               >
-                <BandejaMensajes admin={admin} />
+                <ModuloNotificaciones 
+                  notificaciones={notificaciones} 
+                  onClear={() => {
+                    setNotificaciones([]);
+                    localStorage.removeItem('uparqueo_notificaciones');
+                  }}
+                />
               </motion.div>
             )}
             
@@ -633,7 +702,12 @@ function App() {
                 <ModuloAjustes 
                   onActionSuccess={(msg) => showNotification(msg, 'success')}
                   onDevToolsClick={() => setMostrarDevTools(true)}
+                  onRequestNotifications={requestNotificationPermission}
                   selectedModule={selectedModule}
+                  theme={theme}
+                  setTheme={setTheme}
+                  fontSize={fontSize}
+                  setFontSize={setFontSize}
                 />
               </motion.div>
             )}
@@ -657,7 +731,7 @@ function App() {
               animate={{ x: 0 }}
               exit={{ x: '-100%' }}
               transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-              className="fixed inset-y-0 left-0 w-[80%] max-w-xs bg-white z-[110] shadow-2xl md:hidden flex flex-col"
+              className="fixed inset-y-0 left-0 w-[80%] max-w-xs bg-white dark:bg-gray-900 z-[110] shadow-2xl md:hidden flex flex-col transition-colors duration-300"
             >
               <div className="p-8 bg-blue-900 text-white">
                 <div className="flex items-center gap-4 mb-6">
@@ -683,11 +757,11 @@ function App() {
                       onClick={() => handleTabChange(item.id)}
                       className={`w-full flex items-center gap-4 px-6 py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all ${
                         isActive 
-                          ? `${item.bgColor} ${item.textColor} shadow-lg shadow-gray-100` 
-                          : 'text-gray-500 hover:bg-gray-50'
+                          ? `${item.bgColor} ${item.textColor} shadow-lg shadow-gray-100 dark:shadow-none` 
+                          : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'
                       }`}
                     >
-                      <div className={`p-2 rounded-xl ${isActive ? 'bg-white shadow-sm' : 'bg-gray-100'}`}>
+                      <div className={`p-2 rounded-xl ${isActive ? 'bg-white dark:bg-gray-800 shadow-sm' : 'bg-gray-100 dark:bg-gray-800/50'}`}>
                         <Icon size={18} />
                       </div>
                       {item.label}
@@ -697,9 +771,9 @@ function App() {
                 {deferredPrompt && (
                   <button 
                     onClick={handleInstallApp}
-                    className="w-full flex items-center gap-4 px-6 py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all text-emerald-600 bg-emerald-50 hover:bg-emerald-100"
+                    className="w-full flex items-center gap-4 px-6 py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20 hover:bg-emerald-100 dark:hover:bg-emerald-900/30"
                   >
-                    <div className="p-2 rounded-xl bg-white shadow-sm">
+                    <div className="p-2 rounded-xl bg-white dark:bg-gray-800 shadow-sm">
                       <Download size={18} />
                     </div>
                     Instalar App
@@ -707,10 +781,10 @@ function App() {
                 )}
               </nav>
 
-              <div className="p-6 border-t border-gray-100">
+              <div className="p-6 border-t border-gray-100 dark:border-gray-800">
                 <button 
                   onClick={handleLogout}
-                  className="w-full py-4 bg-red-50 text-red-500 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center justify-center gap-3"
+                  className="w-full py-4 bg-red-50 dark:bg-red-900/20 text-red-500 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center justify-center gap-3 hover:bg-red-100 dark:hover:bg-red-900/40 transition-all"
                 >
                   <X size={18} /> Cerrar Sesión
                 </button>

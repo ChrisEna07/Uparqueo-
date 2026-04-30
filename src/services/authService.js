@@ -18,7 +18,7 @@ export const loginAdmin = async (username, password) => {
 };
 
 // Obtener lista filtrada por contexto para privacidad y segmentación de módulos
-export const getAdmins = async (currentAdmin = null, selectedModule = null) => {
+export const getAdmins = async (currentAdmin = null, selectedModule = null, includeSelf = false) => {
   try {
     const { data, error } = await supabase
       .from('admins')
@@ -32,25 +32,22 @@ export const getAdmins = async (currentAdmin = null, selectedModule = null) => {
     // Si no es el Super Admin Master (ambos o admin_master), aplicamos filtros estrictos
     if (currentAdmin && currentAdmin.rol !== 'ambos' && currentAdmin.rol !== 'admin_master') {
       filteredData = filteredData.filter(u => {
-        // No mostrarse a sí mismo en la lista de gestión
-        if (u.id === currentAdmin.id) return false;
+        // No mostrarse a sí mismo si no se requiere
+        if (!includeSelf && u.id === currentAdmin.id) return false;
 
         // Lógica de segmentación por módulo
         if (selectedModule === 'parqueadero') {
-          // El admin de parqueo ve: otros admins de parqueo y empleados de parqueo/ambos
           return u.rol === 'parqueadero' || u.rol === 'empleado_parqueo' || u.rol === 'empleado_ambos';
         }
         
         if (selectedModule === 'informales') {
-          // El admin de informales ve: otros admins de informales y empleados de informales/ambos
           return u.rol === 'informales' || u.rol === 'empleado_informales' || u.rol === 'empleado_ambos';
         }
 
-        // Si no hay módulo seleccionado, filtrar por su propio rol por defecto
         return u.rol === currentAdmin.rol;
       });
-    } else if (currentAdmin) {
-      // El Super Admin Master ve a todos excepto a sí mismo
+    } else if (currentAdmin && !includeSelf) {
+      // El Super Admin Master ve a todos excepto a sí mismo (si no se pide incluirse)
       filteredData = filteredData.filter(u => u.id !== currentAdmin.id);
     }
 

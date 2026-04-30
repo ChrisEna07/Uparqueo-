@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Users, UserPlus, Trash2, Shield, 
   Key, Mail, Loader2, AlertCircle,
-  CheckCircle, User, Edit2, Eye, X,
+  CheckCircle, User, Edit2, Eye, EyeOff, X,
   Briefcase, Calendar, Fingerprint,
   Car, Store, ShieldCheck, LayoutGrid, Camera, Image as ImageIcon
 } from 'lucide-react';
@@ -20,6 +20,7 @@ const ModuloEmpleados = ({ admin, selectedModule, refreshKey }) => {
   const [showCamera, setShowCamera] = useState(false);
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
+  const [showPassword, setShowPassword] = useState(false);
   
   const [form, setForm] = useState({
     username: '',
@@ -43,7 +44,7 @@ const ModuloEmpleados = ({ admin, selectedModule, refreshKey }) => {
   const cargarEmpleados = async () => {
     setCargando(true);
     try {
-      const res = await getAdmins(admin, selectedModule);
+      const res = await getAdmins(admin, selectedModule, false);
       if (res.success) {
         setEmpleados(res.data);
       }
@@ -55,12 +56,19 @@ const ModuloEmpleados = ({ admin, selectedModule, refreshKey }) => {
   };
 
   const resetForm = () => {
-    setForm({ username: '', password: '', rol: 'parqueadero', nombre_completo: '', foto_perfil: '' });
+    const isAdminMaster = admin?.rol === 'ambos' || admin?.rol === 'admin_master';
+    setForm({ 
+      username: '', password: '', 
+      rol: isAdminMaster ? 'parqueadero' : 'empleado', 
+      nombre_completo: '', foto_perfil: '' 
+    });
     setUsuarioSel(null);
   };
 
   const handleOpenModal = (tipo, usuario = null) => {
     setModo(tipo);
+    const isAdminMaster = admin?.rol === 'ambos' || admin?.rol === 'admin_master';
+    
     if (usuario) {
       setUsuarioSel(usuario);
       const isSubRole = usuario.rol.includes('_');
@@ -74,9 +82,13 @@ const ModuloEmpleados = ({ admin, selectedModule, refreshKey }) => {
       if (isSubRole) setSubRolEmpleado(usuario.rol.split('_')[1]);
     } else {
       resetForm();
-      // Sugerir subrol según el módulo actual
-      if (selectedModule === 'parqueadero') setSubRolEmpleado('parqueo');
-      if (selectedModule === 'informales') setSubRolEmpleado('informales');
+      if (!isAdminMaster) {
+        if (admin?.rol === 'parqueadero') setSubRolEmpleado('parqueo');
+        if (admin?.rol === 'informales') setSubRolEmpleado('informales');
+      } else {
+        if (selectedModule === 'parqueadero') setSubRolEmpleado('parqueo');
+        if (selectedModule === 'informales') setSubRolEmpleado('informales');
+      }
     }
     setMostrarModal(true);
   };
@@ -267,11 +279,16 @@ const ModuloEmpleados = ({ admin, selectedModule, refreshKey }) => {
                     </div>
                     <div>
                       <label className="text-[10px] font-black text-gray-400 uppercase ml-2 mb-2 block tracking-widest">Clave {modo === 'editar' && '(Opcional)'}</label>
-                      <input 
-                        type="password" required={modo === 'crear'} value={form.password}
-                        onChange={(e) => setForm({...form, password: e.target.value})}
-                        className="w-full px-6 py-4 bg-gray-50 border border-gray-200 rounded-2xl focus:ring-4 focus:ring-indigo-100 outline-none font-bold"
-                      />
+                      <div className="relative flex items-center">
+                        <input 
+                          type={showPassword ? "text" : "password"} required={modo === 'crear'} value={form.password}
+                          onChange={(e) => setForm({...form, password: e.target.value})}
+                          className="w-full px-6 py-4 bg-gray-50 border border-gray-200 rounded-2xl focus:ring-4 focus:ring-indigo-100 outline-none font-bold pr-12"
+                        />
+                        <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-4 text-gray-400 hover:text-gray-600">
+                          {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                        </button>
+                      </div>
                     </div>
                     <div className="md:col-span-2">
                       <label className="text-[10px] font-black text-gray-400 uppercase ml-2 mb-2 block tracking-widest">Nombre Real</label>
@@ -379,7 +396,10 @@ const ModuloEmpleados = ({ admin, selectedModule, refreshKey }) => {
                   <div>
                     <label className="text-[10px] font-black text-gray-400 uppercase ml-2 mb-4 block tracking-widest">Puesto de Trabajo:</label>
                     <div className="grid grid-cols-2 gap-4">
-                      {rolesConfig.map(r => (
+                      {rolesConfig.filter(r => {
+                        if (admin?.rol === 'ambos' || admin?.rol === 'admin_master') return true;
+                        return r.id === 'empleado';
+                      }).map(r => (
                         <div 
                           key={r.id}
                           onClick={() => setForm({...form, rol: r.id})}
@@ -407,7 +427,12 @@ const ModuloEmpleados = ({ admin, selectedModule, refreshKey }) => {
                           { id: 'parqueo', label: 'Parqueo', icon: Car },
                           { id: 'informales', label: 'Informales', icon: Store },
                           { id: 'ambos', label: 'Ambos', icon: LayoutGrid }
-                        ].map(s => (
+                        ].filter(s => {
+                          if (admin?.rol === 'ambos' || admin?.rol === 'admin_master') return true;
+                          if (admin?.rol === 'parqueadero') return s.id === 'parqueo';
+                          if (admin?.rol === 'informales') return s.id === 'informales';
+                          return false;
+                        }).map(s => (
                           <button
                             key={s.id} type="button" onClick={() => setSubRolEmpleado(s.id)}
                             className={`flex-1 flex flex-col items-center gap-2 p-3 rounded-xl border-2 transition-all ${subRolEmpleado === s.id ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-white border-gray-100 text-gray-400'}`}

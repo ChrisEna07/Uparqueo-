@@ -2,10 +2,10 @@ import React, { useEffect, useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '../lib/supabase';
 import { getTarifas, updateTarifa, updateDevKey } from '../services/parqueoService';
-import { Settings, Save, Info, DollarSign, Clock, TrendingUp, AlertCircle, CheckCircle, Edit2, Car, Bike, Store, Key } from 'lucide-react';
+import { Settings, Save, Info, DollarSign, Clock, TrendingUp, AlertCircle, CheckCircle, Edit2, Car, Bike, Store, Key, Sun, Moon, Type, Bell } from 'lucide-react';
 import Swal from 'sweetalert2';
 
-const ModuloAjustes = ({ onActionSuccess, onDevToolsClick, selectedModule }) => {
+const ModuloAjustes = ({ onActionSuccess, onDevToolsClick, onRequestNotifications, selectedModule, theme, setTheme, fontSize, setFontSize }) => {
   const [tarifas, setTarifas] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [editando, setEditando] = useState(null);
@@ -384,6 +384,83 @@ const ModuloAjustes = ({ onActionSuccess, onDevToolsClick, selectedModule }) => 
             <TrendingUp className="text-green-500" size={32} />
           </div>
         </motion.div>
+      </div>
+
+      {/* Sección de Apariencia */}
+      <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 mb-8 shadow-xl border border-gray-100 dark:border-gray-700">
+        <div className="flex items-center gap-3 mb-6">
+          <div className="bg-blue-500/10 p-2 rounded-lg">
+            <Sun className="text-blue-500" size={24} />
+          </div>
+          <h3 className="text-xl font-bold text-gray-800 dark:text-white">Apariencia y Personalización</h3>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+          {/* Toggle de Tema */}
+          <div className="space-y-4">
+            <label className="block text-sm font-bold text-gray-700 dark:text-gray-300">Modo Visual</label>
+            <div className="flex bg-gray-100 dark:bg-gray-900 p-1 rounded-2xl">
+              <button 
+                onClick={() => setTheme('light')}
+                className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl transition-all ${theme === 'light' ? 'bg-white shadow-md text-blue-600 font-bold' : 'text-gray-500'}`}
+              >
+                <Sun size={18} /> Claro
+              </button>
+              <button 
+                onClick={() => setTheme('dark')}
+                className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl transition-all ${theme === 'dark' ? 'bg-gray-800 shadow-md text-blue-400 font-bold' : 'text-gray-500'}`}
+              >
+                <Moon size={18} /> Oscuro
+              </button>
+            </div>
+          </div>
+
+          {/* Slider de Tamaño de Letra */}
+          <div className="space-y-4">
+            <div className="flex justify-between items-center">
+              <label className="block text-sm font-bold text-gray-700 dark:text-gray-300">Tamaño de Letra</label>
+              <span className="bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 px-3 py-1 rounded-lg text-xs font-bold">
+                {fontSize}px
+              </span>
+            </div>
+            <div className="flex items-center gap-4">
+              <Type size={16} className="text-gray-400" />
+              <input 
+                type="range" 
+                min="12" 
+                max="30" 
+                value={fontSize}
+                onChange={(e) => setFontSize(parseInt(e.target.value))}
+                className="flex-1 h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer accent-blue-600"
+              />
+              <Type size={24} className="text-gray-400" />
+            </div>
+            <p className="text-[10px] text-gray-400 italic">Desliza para ajustar el tamaño de los textos en toda la aplicación.</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Sección de Sistema y Notificaciones */}
+      <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 mb-8 shadow-xl border border-gray-100 dark:border-gray-700">
+        <div className="flex items-center gap-3 mb-6">
+          <div className="bg-purple-500/10 p-2 rounded-lg">
+            <Bell className="text-purple-500" size={24} />
+          </div>
+          <h3 className="text-xl font-bold text-gray-800 dark:text-white">Sistema y Notificaciones</h3>
+        </div>
+
+        <div className="flex flex-col md:flex-row items-center justify-between gap-6">
+          <div className="flex-1">
+            <p className="text-gray-700 dark:text-gray-300 font-bold mb-1">Alertas en tiempo real</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400">Habilita las notificaciones nativas para recibir alertas de pagos y eventos incluso con la pantalla apagada.</p>
+          </div>
+          <button 
+            onClick={onRequestNotifications}
+            className="w-full md:w-auto bg-purple-600 hover:bg-purple-700 text-white px-8 py-3 rounded-xl font-black text-xs uppercase tracking-widest transition-all active:scale-95 shadow-lg shadow-purple-900/20 flex items-center justify-center gap-2"
+          >
+            <Bell size={18} /> Activar Notificaciones
+          </button>
+        </div>
       </div>
 
       {/* Lista de tarifas */}

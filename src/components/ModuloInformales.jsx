@@ -217,6 +217,8 @@ const ModuloInformales = () => {
     n.nombre_cliente.toLowerCase().includes(busqueda.toLowerCase())
   );
 
+  const clientesAtrasados = negociosFiltrados.filter(n => n.activo && n.deuda_acumulada >= (tarifaGlobal * 7));
+
   return (
     <div className="max-w-7xl mx-auto p-4 space-y-8">
       {/* HEADER GESTIÓN INFORMAL */}
@@ -248,6 +250,33 @@ const ModuloInformales = () => {
           />
         </div>
       </div>
+
+      {/* RECORDATORIO DE ATRASOS */}
+      <AnimatePresence>
+        {clientesAtrasados.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.9 }}
+            className="bg-red-50 border-l-4 border-red-500 p-6 rounded-2xl shadow-sm flex items-start gap-4"
+          >
+            <AlertCircle className="text-red-500 shrink-0 mt-1" size={28} />
+            <div>
+              <h3 className="text-red-800 font-black text-lg">Alerta de Pagos Atrasados</h3>
+              <p className="text-red-600 font-medium text-sm mt-1">
+                Hay {clientesAtrasados.length} cliente{clientesAtrasados.length > 1 ? 's' : ''} con una semana o más sin abonar.
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {clientesAtrasados.map(c => (
+                  <span key={c.id} className="bg-white text-red-700 px-3 py-1 rounded-lg text-[10px] font-black uppercase shadow-sm border border-red-100">
+                    {c.nombre_negocio} (-${c.deuda_acumulada.toLocaleString()})
+                  </span>
+                ))}
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* LISTADO DE NEGOCIOS */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">

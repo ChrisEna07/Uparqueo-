@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { loginAdmin } from '../services/authService';
-import { Shield, Lock, User, Loader2, Sparkles, Fingerprint, Key, ArrowRight, Crown } from 'lucide-react';
+import { Shield, Lock, User, Loader2, Sparkles, Fingerprint, Key, ArrowRight, Crown, Eye, EyeOff } from 'lucide-react';
 import Swal from 'sweetalert2';
 import logoImg from '../assets/logo upar.png';
 import bgImg from '../assets/parking_bg.png';
@@ -11,6 +11,7 @@ const Login = ({ onLoginSuccess, onDevRequest }) => {
   const [password, setPassword] = useState('');
   const [cargando, setCargando] = useState(false);
   const [taps, setTaps] = useState(0);
+  const [showPassword, setShowPassword] = useState(false);
 
   const handleLogoClick = () => {
     const newTaps = taps + 1;
@@ -157,16 +158,23 @@ const Login = ({ onLoginSuccess, onDevRequest }) => {
               </label>
               <div className="relative group">
                 <div className="absolute inset-0 bg-gradient-to-r from-blue-600 to-purple-600 rounded-xl blur opacity-0 group-focus-within:opacity-100 transition-opacity duration-300"></div>
-                <div className="relative flex items-center gap-3 bg-black/50 border border-white/10 rounded-xl px-4 py-3 focus-within:border-blue-500 transition-all duration-300">
+                <div className="relative flex items-center gap-3 bg-black/50 border border-white/10 rounded-xl px-4 py-3 focus-within:border-blue-500 transition-all duration-300 pr-10">
                   <Lock className="text-gray-400 group-focus-within:text-blue-400 transition-colors" size={18} />
                   <input 
-                    type="password"
+                    type={showPassword ? "text" : "password"}
                     placeholder="••••••••"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     className="w-full bg-transparent text-white outline-none placeholder-gray-500 text-sm"
                     required
                   />
+                  <button 
+                    type="button" 
+                    onClick={() => setShowPassword(!showPassword)} 
+                    className="absolute right-3 text-gray-400 hover:text-white transition-colors"
+                  >
+                    {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
                 </div>
               </div>
             </div>

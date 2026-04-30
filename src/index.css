@@ -1,14 +1,85 @@
 @import "tailwindcss";
+@variant dark (&:where(.dark, .dark *));
 
 /* Variables CSS para colores consistentes */
 :root {
-  --accent: #2563eb;
-  --accent-bg: #dbeafe;
+  --accent: #4f46e5;
+  --accent-light: #818cf8;
+  --accent-bg: #eef2ff;
   --border: #e2e8f0;
   --text: #0f172a;
-  --bg-main: #f8fafc;
+  --text-muted: #64748b;
+  --bg-main: #f1f5f9;
+  --bg-card: #ffffff;
   --mono: 'Courier New', monospace;
-  --shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+  --base-font-size: 16px;
+}
+
+.dark {
+  --accent: #818cf8;
+  --accent-light: #a5b4fc;
+  --accent-bg: #1e1b4b;
+  --border: #1e293b;
+  --text: #f1f5f9;
+  --text-muted: #94a3b8;
+  --bg-main: #020617;
+  --bg-card: #0f172a;
+  --shadow: 0 10px 15px -3px rgb(0 0 0 / 0.3), 0 4px 6px -4px rgb(0 0 0 / 0.3);
+}
+
+/* Global utility overrides for dark mode */
+.dark .bg-white {
+  background-color: var(--bg-card) !important;
+}
+
+.dark .bg-gray-50 {
+  background-color: #020617 !important;
+}
+
+.dark .bg-gray-100 {
+  background-color: #1e293b !important;
+}
+
+.dark .text-gray-900,
+.dark .text-gray-800 {
+  color: var(--text) !important;
+}
+
+.dark .text-gray-700,
+.dark .text-gray-600,
+.dark .text-gray-500 {
+  color: var(--text-muted) !important;
+}
+
+.dark .border-gray-100,
+.dark .border-gray-200 {
+  border-color: var(--border) !important;
+}
+
+/* Glassmorphism utilities */
+.glass {
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.dark .glass {
+  background: rgba(15, 23, 42, 0.7);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+html {
+  font-size: var(--base-font-size);
+}
+
+body {
+  background-color: var(--bg-main);
+  color: var(--text);
+  transition: background-color 0.3s, color 0.3s;
 }
 
 /* ============================================ */
@@ -344,13 +415,14 @@ input[type="number"]::-webkit-outer-spin-button {
 /* ============================================ */
 
 .card-chriz {
-  background: #ffffff !important;
+  background: var(--bg-main) !important;
   border: 1px solid var(--border) !important;
   border-radius: 12px;
   padding: 24px;
   box-shadow: var(--shadow);
   text-align: left;
   transition: all 0.3s;
+  color: var(--text);
 }
 
 .card-chriz:hover {
