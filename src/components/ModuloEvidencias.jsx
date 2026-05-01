@@ -3,7 +3,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Camera, FileText, Plus, Trash2, 
   Search, AlertCircle, Image as ImageIcon,
-  MessageSquare, Calendar, User, Loader2
+  MessageSquare, Calendar, User, Loader2,
+  Upload, XCircle, ChevronRight, ChevronLeft
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import Swal from 'sweetalert2';
@@ -16,7 +17,7 @@ const ModuloEvidencias = ({ admin, selectedModule = 'parqueadero' }) => {
   const [nuevaEvidencia, setNuevaEvidencia] = useState({
     placa: '',
     nota: '',
-    url_imagen: ''
+    imagenes: [] // Ahora es un array
   });
 
   useEffect(() => {
@@ -52,14 +53,24 @@ const ModuloEvidencias = ({ admin, selectedModule = 'parqueadero' }) => {
   };
 
   const handleFileUpload = (e) => {
-    const file = e.target.files[0];
-    if (file) {
+    const files = Array.from(e.target.files);
+    files.forEach(file => {
       const reader = new FileReader();
       reader.onloadend = () => {
-        setNuevaEvidencia({ ...nuevaEvidencia, url_imagen: reader.result });
+        setNuevaEvidencia(prev => ({
+          ...prev,
+          imagenes: [...prev.imagenes, reader.result]
+        }));
       };
       reader.readAsDataURL(file);
-    }
+    });
+  };
+
+  const eliminarImagenPrevia = (index) => {
+    setNuevaEvidencia(prev => ({
+      ...prev,
+      imagenes: prev.imagenes.filter((_, i) => i !== index)
+    }));
   };
 
   const handleCrearEvidencia = async (e) => {
@@ -94,8 +105,8 @@ const ModuloEvidencias = ({ admin, selectedModule = 'parqueadero' }) => {
         .from('evidencias')
         .insert([{
           registro_id: registroId,
-          negocio_id: negocioId, // Asumimos que esta columna existe o la estamos creando virtualmente
-          url_imagen: nuevaEvidencia.url_imagen || 'https://images.unsplash.com/photo-1506521781263-d8422e82f27a?auto=format&fit=crop&q=80&w=1000',
+          negocio_id: negocioId,
+          imagenes: nuevaEvidencia.imagenes.length > 0 ? nuevaEvidencia.imagenes : ['https://images.unsplash.com/photo-1506521781263-d8422e82f27a?auto=format&fit=crop&q=80&w=1000'],
           nota: nuevaEvidencia.nota,
           modulo: selectedModule
         }]);
@@ -104,7 +115,7 @@ const ModuloEvidencias = ({ admin, selectedModule = 'parqueadero' }) => {
 
       Swal.fire('Éxito', 'Evidencia registrada correctamente', 'success');
       setMostrarModal(false);
-      setNuevaEvidencia({ placa: '', nota: '', url_imagen: '' });
+      setNuevaEvidencia({ placa: '', nota: '', imagenes: [] });
       cargarEvidencias();
     } catch (error) {
       console.error('Error creando evidencia:', error);
@@ -181,11 +192,19 @@ const ModuloEvidencias = ({ admin, selectedModule = 'parqueadero' }) => {
             >
               <div className="relative h-56 overflow-hidden">
                 <img 
-                  src={ev.url_imagen} 
+                  src={ev.imagenes && ev.imagenes.length > 0 ? ev.imagenes[0] : 'https://images.unsplash.com/photo-1506521781263-d8422e82f27a?auto=format&fit=crop&q=80&w=1000'} 
                   alt="Evidencia" 
                   className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
                 />
-                <div className="absolute top-4 left-4 bg-black/50 backdrop-blur-md px-3 py-1 rounded-full text-white font-bold text-xs">
+                
+                {/* Badge de cantidad de fotos */}
+                {ev.imagenes?.length > 1 && (
+                  <div className="absolute bottom-4 right-4 bg-black/70 backdrop-blur-md px-3 py-1.5 rounded-xl text-white font-black text-[10px] flex items-center gap-2">
+                    <ImageIcon size={12}/> +{ev.imagenes.length - 1} FOTOS
+                  </div>
+                )}
+
+                <div className="absolute top-4 left-4 bg-indigo-600/90 backdrop-blur-md px-3 py-1 rounded-full text-white font-black text-[10px] uppercase tracking-widest">
                   {selectedModule === 'parqueadero' ? ev.registros_parqueadero?.placa : ev.negocios_informales?.nombre_negocio}
                 </div>
                 {admin?.rol === 'ambos' && (
@@ -260,31 +279,57 @@ const ModuloEvidencias = ({ admin, selectedModule = 'parqueadero' }) => {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-bold text-gray-700 mb-2">Imagen de Evidencia</label>
-                  <div className="flex gap-2">
-                    <div className="relative flex-1">
+                  <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3 ml-2">Archivos de Evidencia ({nuevaEvidencia.imagenes.length})</label>
+                  
+                  {/* Grid de Previsualización */}
+                  <AnimatePresence>
+                    {nuevaEvidencia.imagenes.length > 0 && (
+                      <div className="grid grid-cols-4 gap-3 mb-4">
+                        {nuevaEvidencia.imagenes.map((img, idx) => (
+                          <motion.div 
+                            key={idx}
+                            initial={{ opacity: 0, scale: 0.5 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            exit={{ opacity: 0, scale: 0.5 }}
+                            className="relative aspect-square rounded-xl overflow-hidden border border-indigo-100 group"
+                          >
+                            <img src={img} className="w-full h-full object-cover" />
+                            <button 
+                              type="button"
+                              onClick={() => eliminarImagenPrevia(idx)}
+                              className="absolute inset-0 bg-red-500/80 flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          </motion.div>
+                        ))}
+                      </div>
+                    )}
+                  </AnimatePresence>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <label className="cursor-pointer bg-indigo-50 hover:bg-indigo-100 border-2 border-dashed border-indigo-200 p-6 rounded-2xl transition-all flex flex-col items-center justify-center gap-2 group">
+                      <div className="p-3 bg-white rounded-xl shadow-sm text-indigo-600 group-hover:scale-110 transition-transform">
+                        <Camera size={24} />
+                      </div>
+                      <span className="text-[10px] font-black text-indigo-600 uppercase tracking-widest">Tomar Foto</span>
                       <input 
-                        type="url"
-                        placeholder="URL de la imagen (opcional)"
-                        value={nuevaEvidencia.url_imagen}
-                        onChange={(e) => setNuevaEvidencia({...nuevaEvidencia, url_imagen: e.target.value})}
-                        className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-xs"
+                        type="file" accept="image/*" capture="environment"
+                        multiple className="hidden" onChange={handleFileUpload}
                       />
-                    </div>
-                    <label className="cursor-pointer bg-gray-100 hover:bg-gray-200 p-3 rounded-xl transition-all flex items-center justify-center">
-                      <Camera size={20} className="text-gray-600" />
+                    </label>
+
+                    <label className="cursor-pointer bg-gray-50 hover:bg-gray-100 border-2 border-dashed border-gray-200 p-6 rounded-2xl transition-all flex flex-col items-center justify-center gap-2 group">
+                      <div className="p-3 bg-white rounded-xl shadow-sm text-gray-600 group-hover:scale-110 transition-transform">
+                        <Upload size={24} />
+                      </div>
+                      <span className="text-[10px] font-black text-gray-600 uppercase tracking-widest">Desde Galería</span>
                       <input 
-                        type="file" 
-                        accept="image/*" 
-                        capture="environment"
-                        className="hidden" 
-                        onChange={handleFileUpload}
+                        type="file" accept="image/*" 
+                        multiple className="hidden" onChange={handleFileUpload}
                       />
                     </label>
                   </div>
-                  {nuevaEvidencia.url_imagen && nuevaEvidencia.url_imagen.startsWith('data:') && (
-                    <p className="text-[10px] text-green-600 mt-1 font-bold">✓ Imagen cargada localmente</p>
-                  )}
                 </div>
                 <button 
                   type="submit"
