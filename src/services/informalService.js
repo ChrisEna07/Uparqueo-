@@ -21,8 +21,11 @@ export const calcularDeudaDetallada = (negocio, tarifa = 5000) => {
   // Días totales = Transcurridos + Ajustes manuales
   const diasTotales = (diasCalendario < 0 ? 0 : diasCalendario) + (negocio.dias_manuales || 0);
   
+  // Usar la tarifa específica del negocio si existe, de lo contrario usar la global
+  const tarifaAplicar = negocio.valor_diario || tarifa;
+  
   // Cálculo final restando lo que ya ha pagado (abonos)
-  const deudaTotal = (diasTotales * tarifa) - (negocio.abonos || 0);
+  const deudaTotal = (diasTotales * tarifaAplicar) - (negocio.abonos || 0);
 
   return {
     diasTotales,
@@ -48,6 +51,7 @@ export const getNegociosInformales = async () => {
 
     // Procesar datos para calcular deuda y asegurar campos requeridos por el componente
     const procesados = (data || []).map(n => {
+      // Pasamos la tarifa global como fallback, pero calcularDeudaDetallada usará n.valor_diario si existe
       const { deudaTotal, diasTotales } = calcularDeudaDetallada(n, tarifaGlobal);
       return {
         ...n,
@@ -215,7 +219,7 @@ export const registrarNegocio = async (datos, adminUsername = 'sistema') => {
       .select();
       
     if (error) throw error;
-    await registrarAuditoria('informales', 'CREACION', `Se creó el negocio ${nombre_negocio}`, adminUsername);
+    await registrarAuditoria('informales', 'CREACION', `Se creó el negocio ${nombre_negocio} con tarifa diaria de $${parseFloat(valor_diario).toLocaleString()}`, adminUsername);
     return { success: true, data };
   } catch (error) {
     console.error("Error en registrarNegocio:", error);

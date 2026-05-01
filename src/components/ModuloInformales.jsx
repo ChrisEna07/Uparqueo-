@@ -33,7 +33,8 @@ const ModuloInformales = ({ admin }) => {
   const [form, setForm] = useState({
     nombre_cliente: '',
     nombre_negocio: '',
-    celular: ''
+    celular: '',
+    valor_diario: ''
   });
 
   useEffect(() => {
@@ -81,13 +82,13 @@ const ModuloInformales = ({ admin }) => {
     try {
       const res = await registrarNegocio({ 
         ...form, 
-        valor_diario: tarifaGlobal
+        valor_diario: parseFloat(form.valor_diario) || tarifaGlobal
       }, admin?.username || 'admin');
       if (res.success) {
         Swal.close();
         await Swal.fire('¡Éxito!', 'Negocio registrado correctamente', 'success');
         setMostrarForm(false);
-        setForm({ nombre_cliente: '', nombre_negocio: '', celular: '' });
+        setForm({ nombre_cliente: '', nombre_negocio: '', celular: '', valor_diario: '' });
         cargarNegocios();
       } else {
         Swal.fire('Error', res.error?.message || 'No se pudo registrar el negocio', 'error');
@@ -386,9 +387,13 @@ const ModuloInformales = ({ admin }) => {
                     </div>
                   </div>
 
-                  <h3 className="text-2xl font-black text-gray-900 leading-tight mb-1">{n.nombre_negocio}</h3>
-                  <div className="flex items-center gap-2 text-gray-500 font-bold text-xs uppercase tracking-widest">
-                    <User size={12} /> {n.nombre_cliente}
+                  <div className="flex flex-col gap-1 mt-1">
+                    <div className="flex items-center gap-2 text-gray-500 font-bold text-xs uppercase tracking-widest">
+                      <User size={12} /> {n.nombre_cliente}
+                    </div>
+                    <div className="flex items-center gap-2 text-blue-600 font-black text-[10px] uppercase tracking-widest">
+                      Tarifa: ${n.valor_diario?.toLocaleString() || '---'} / día
+                    </div>
                   </div>
                 </div>
 
@@ -459,7 +464,7 @@ const ModuloInformales = ({ admin }) => {
                       </button>
                     </div>
                     <button 
-                      onClick={() => generarPDFInformal(n, tarifaGlobal)}
+                      onClick={() => generarPDFInformal(n, n.valor_diario || tarifaGlobal)}
                       className="w-full bg-blue-50 text-blue-600 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-blue-600 hover:text-white transition-all flex items-center justify-center gap-2"
                     >
                       <FileText size={14} /> Generar Extracto PDF
@@ -498,11 +503,19 @@ const ModuloInformales = ({ admin }) => {
                     <label className="text-[10px] font-black text-gray-400 uppercase ml-2 mb-2 block tracking-widest">Celular de Contacto (Opcional)</label>
                     <input type="tel" value={form.celular} onChange={e => setForm({...form, celular: e.target.value})} className="w-full bg-gray-50 border border-gray-200 rounded-2xl p-4 font-bold outline-none focus:ring-4 focus:ring-orange-100" placeholder="Ej: 300 123 4567"/>
                   </div>
-                  <div className="bg-orange-50 p-6 rounded-2xl border border-orange-100">
-                    <div className="flex justify-between items-center">
-                      <p className="text-[10px] font-black text-orange-600 uppercase tracking-widest">Tarifa Diaria de Guardado</p>
-                      <p className="text-xl font-black text-orange-700">${tarifaGlobal.toLocaleString()}</p>
+                  <div>
+                    <label className="text-[10px] font-black text-gray-400 uppercase ml-2 mb-2 block tracking-widest text-center">Tarifa Diaria Acordada ($)</label>
+                    <div className="relative">
+                      <input 
+                        required 
+                        type="number"
+                        placeholder={`Sugerida: ${tarifaGlobal}`}
+                        value={form.valor_diario} 
+                        onChange={e => setForm({...form, valor_diario: e.target.value})} 
+                        className="w-full bg-orange-50 border-2 border-orange-100 rounded-2xl p-5 font-black text-center text-2xl text-orange-700 outline-none focus:ring-4 focus:ring-orange-200 placeholder:text-orange-200"
+                      />
                     </div>
+                    <p className="text-[9px] text-gray-400 font-bold text-center mt-2 uppercase tracking-widest">Esta tarifa se usará para el cálculo automático de deuda</p>
                   </div>
                 </div>
                 <button 
