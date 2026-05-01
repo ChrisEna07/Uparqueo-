@@ -5,14 +5,12 @@ import { registrarAuditoria } from './auditService';
  * @param {Object} negocio - El objeto del negocio desde la DB
  * @param {Number} tarifa - El valor por día (traído de la tabla configuracion)
  */
-export const calcularDeudaDetallada = (negocio, tarifa = 5000) => {
-  if (!negocio.activo) return { deudaTotal: 0, diasTotales: 0 };
+export const calcularDeudaDetallada = (negocio, tarifa = 5000, cargosAdicionales = []) => {
+  if (!negocio.activo) return { deudaTotal: 0, diasTotales: 0, sumaCargos: 0 };
 
-  // Obtener fecha actual en Colombia (UTC-5)
   const ahoraColombia = new Date(new Date().toLocaleString("en-US", {timeZone: "America/Bogota"}));
   ahoraColombia.setHours(0,0,0,0);
 
-  // La fecha de inicio ya viene como YYYY-MM-DD desde la DB
   const [year, month, day] = negocio.fecha_inicio.split('-').map(Number);
   const inicioColombia = new Date(year, month - 1, day);
   inicioColombia.setHours(0,0,0,0);
@@ -22,18 +20,47 @@ export const calcularDeudaDetallada = (negocio, tarifa = 5000) => {
   
   const diasTotales = (diasCalendario < 0 ? 0 : diasCalendario) + (negocio.dias_manuales || 0);
   const tarifaAplicar = negocio.valor_diario || tarifa;
-  const deudaTotal = (diasTotales * tarifaAplicar) - (negocio.abonos || 0);
+  
+  // Sumar todos los cargos adicionales registrados para este negocio
+  const sumaCargos = cargosAdicionales.reduce((acc, c) => acc + Number(c.monto), 0);
+  
+  const deudaTotal = (diasTotales * tarifaAplicar) + sumaCargos - (negocio.abonos || 0);
 
   return {
     diasTotales,
+    sumaCargos,
     deudaTotal: deudaTotal > 0 ? deudaTotal : 0
   };
 };
 
+export const registrarCargoAdicional = async (negocioId, nombreCargo, monto, adminUsername = 'sistema', nombreNegocio = '') => {
+  try {
+    const { data, error } = await supabase
+      .from('cargos_adicionales_informales')
+      .insert([{
+        negocio_id: negocioId,
+        nombre_cargo: nombreCargo,
+        monto: parseFloat(monto),
+        registrado_por: adminUsername
+      }])
+      .select();
 
-/**
- * Obtiene todos los negocios informales registrados
- */
+    if (error) throw error;
+
+    await registrarAuditoria(
+      'informales', 
+      'CARGO_EXTRA', 
+      `Nuevo cargo adicional en ${nombreNegocio}: ${nombreCargo} ($${parseFloat(monto).toLocaleString()})`, 
+      adminUsername
+    );
+
+    return { success: true, data: data[0] };
+  } catch (error) {
+    console.error("Error en registrarCargoAdicional:", error);
+    return { success: false, error };
+  }
+};
+
 export const getNegociosInformales = async () => {
   try {
     const { data, error } = await supabase
@@ -43,18 +70,20 @@ export const getNegociosInformales = async () => {
     
     if (error) throw error;
 
-    // Obtener la tarifa global primero
+    // Obtener todos los cargos adicionales para procesar
+    const { data: cargos } = await supabase.from('cargos_adicionales_informales').select('*');
     const tarifaGlobal = await getTarifaInformal();
 
-    // Procesar datos para calcular deuda y asegurar campos requeridos por el componente
     const procesados = (data || []).map(n => {
-      // Pasamos la tarifa global como fallback, pero calcularDeudaDetallada usará n.valor_diario si existe
-      const { deudaTotal, diasTotales } = calcularDeudaDetallada(n, tarifaGlobal);
+      const cargosNegocio = (cargos || []).filter(c => c.negocio_id === n.id);
+      const { deudaTotal, diasTotales, sumaCargos } = calcularDeudaDetallada(n, tarifaGlobal, cargosNegocio);
       return {
         ...n,
         abonos_hoy: n.abonos || 0,
         deuda_acumulada: deudaTotal,
-        dias_totales: diasTotales
+        dias_totales: diasTotales,
+        suma_cargos_extra: sumaCargos,
+        lista_cargos: cargosNegocio
       };
     });
 

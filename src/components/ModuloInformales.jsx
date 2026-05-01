@@ -13,7 +13,8 @@ import {
   registrarAbono,
   desactivarNegocio,
   agregarDiasManuales,
-  actualizarTarifaNegocio
+  actualizarTarifaNegocio,
+  registrarCargoAdicional
 } from '../services/informalService';
 import { getTarifaInformal } from '../services/informalService';
 import { generarPDFInformal } from '../services/pdfService';
@@ -138,9 +139,26 @@ const ModuloInformales = ({ admin }) => {
 
       try {
         const negocio = negocios.find(n => n.id === id);
+        const tarifa = negocio.valor_diario || tarifaGlobal;
+        
+        // Determinar si el abono cubre el día de mañana
+        // Si la deuda actual es <= 0 y abona al menos una tarifa, es pago adelantado
+        const esPagoManana = (negocio.deuda_acumulada <= 0 && valor >= tarifa);
+
         await registrarAbono(id, abonosActuales, valor, admin?.username || 'admin', negocio?.nombre_negocio);
         Swal.close();
-        await Swal.fire('¡Abono Registrado!', `$${valor.toLocaleString()}`, 'success');
+
+        if (esPagoManana) {
+          await Swal.fire({
+            title: '¡Pago Adelantado!',
+            text: 'Este negocio pagó el día de mañana. El contador no sumará deuda mañana.',
+            icon: 'success',
+            confirmButtonColor: '#10B981'
+          });
+        } else {
+          await Swal.fire('¡Abono Registrado!', `$${valor.toLocaleString()}`, 'success');
+        }
+        
         setMontoAbono({ ...montoAbono, [id]: '' });
         cargarNegocios();
       } catch (err) {
@@ -240,6 +258,39 @@ const ModuloInformales = ({ admin }) => {
         cargarNegocios();
       } catch (err) {
         Swal.fire('Error', 'No se pudo cambiar el estado', 'error');
+      } finally {
+        setProcesando(false);
+      }
+    }
+  };
+
+  const handleCargoAdicional = async (negocio) => {
+    const { value: formValues } = await Swal.fire({
+      title: 'Agregar Cargo Adicional',
+      html:
+        `<input id="swal-input1" class="swal2-input" placeholder="Nombre (ej: Luz, Limpieza)">` +
+        `<input id="swal-input2" type="number" class="swal2-input" placeholder="Monto $">`,
+      focusConfirm: false,
+      showCancelButton: true,
+      confirmButtonText: 'Cargar a Cuenta',
+      preConfirm: () => {
+        const nombre = document.getElementById('swal-input1').value;
+        const monto = document.getElementById('swal-input2').value;
+        if (!nombre || !monto) {
+          Swal.showValidationMessage('Todos los campos son obligatorios');
+        }
+        return { nombre, monto };
+      }
+    });
+
+    if (formValues) {
+      setProcesando(true);
+      try {
+        await registrarCargoAdicional(negocio.id, formValues.nombre, formValues.monto, admin?.username || 'admin', negocio.nombre_negocio);
+        await Swal.fire('Cargo Aplicado', `Se sumaron $${Number(formValues.monto).toLocaleString()} a la deuda`, 'success');
+        cargarNegocios();
+      } catch (err) {
+        Swal.fire('Error', 'No se pudo aplicar el cargo', 'error');
       } finally {
         setProcesando(false);
       }
@@ -462,8 +513,8 @@ const ModuloInformales = ({ admin }) => {
                       <p className="text-lg font-black text-gray-800">{n.dias_totales || 0} d</p>
                     </div>
                     <div className="bg-gray-50 p-4 rounded-2xl">
-                      <p className="text-[9px] text-gray-400 font-black uppercase tracking-widest mb-1">Abonos Hoy</p>
-                      <p className="text-lg font-black text-emerald-600">${n.abonos_hoy.toLocaleString()}</p>
+                      <p className="text-[9px] text-gray-400 font-black uppercase tracking-widest mb-1">Cargos Extra</p>
+                      <p className="text-lg font-black text-amber-600">${(n.suma_cargos_extra || 0).toLocaleString()}</p>
                     </div>
                   </div>
 
@@ -518,6 +569,14 @@ const ModuloInformales = ({ admin }) => {
                         className={`p-3 rounded-xl transition-all disabled:opacity-50 ${n.activo ? 'bg-orange-50 text-orange-600 hover:bg-orange-600 hover:text-white' : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-600 hover:text-white'}`}
                       >
                         <Power size={20} />
+                      </button>
+                      <button 
+                        disabled={procesando}
+                        onClick={() => handleCargoAdicional(n)}
+                        className="p-3 bg-amber-50 text-amber-600 rounded-xl hover:bg-amber-600 hover:text-white transition-all shadow-sm"
+                        title="Agregar Cargo Extra"
+                      >
+                        <Plus size={20} />
                       </button>
                     </div>
                     <button 

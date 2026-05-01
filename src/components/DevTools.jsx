@@ -429,7 +429,7 @@ const DevTools = ({ onClose, currentAdmin, onAction }) => {
                       onClick={async () => {
                         setCargando(true);
                         try {
-                          const tables = ['registros_parqueadero', 'registros_parqueo', 'negocios_informales', 'historial_pagos_informales', 'historial_auditoria', 'mensajes', 'evidencias', 'lista_negra', 'configuracion', 'admins', 'egresos'];
+                          const tables = ['registros_parqueadero', 'registros_parqueo', 'negocios_informales', 'historial_pagos_informales', 'cargos_adicionales_informales', 'historial_auditoria', 'mensajes', 'evidencias', 'lista_negra', 'configuracion', 'admins', 'egresos'];
                           const backupData = {};
                           for (const table of tables) {
                             try {
@@ -538,7 +538,7 @@ const DevTools = ({ onClose, currentAdmin, onAction }) => {
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 w-full max-w-5xl">
                     {[
                       { id: 'parqueadero', label: 'PARQUEO', icon: Car, tables: ['registros_parqueadero', 'registros_parqueo'] },
-                      { id: 'informales', label: 'INFORMALES', icon: Store, tables: ['negocios_informales', 'historial_pagos_informales', 'historial_auditoria'] },
+                      { id: 'informales', label: 'INFORMALES', icon: Store, tables: ['negocios_informales', 'historial_pagos_informales', 'cargos_adicionales_informales', 'historial_auditoria'] },
                       { id: 'mensajes', label: 'MENSAJES', icon: MessageSquare, tables: ['mensajes'] },
                       { id: 'evidencias', label: 'EVIDENCIAS', icon: Eye, tables: ['evidencias'] },
                       { id: 'lista_negra', label: 'LISTA NEGRA', icon: ShieldAlert, tables: ['lista_negra'] },
