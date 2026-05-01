@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Car, Users, Settings, AlertCircle, CheckCircle, Menu, X, TrendingUp, ArrowLeft, ShieldAlert, Camera, Download, Image as ImageIcon } from 'lucide-react';
+import { Car, Users, Settings, AlertCircle, CheckCircle, Menu, X, TrendingUp, TrendingDown, ArrowLeft, ShieldAlert, Camera, Download, Image as ImageIcon } from 'lucide-react';
 import RegistroEntrada from './components/RegistroEntrada';
 import ListaActivos from './components/ListaActivos';
 import ModuloInformales from './components/ModuloInformales';
@@ -11,6 +11,7 @@ import ModuloEvidencias from './components/ModuloEvidencias';
 import ModuloNotificaciones from './components/ModuloNotificaciones';
 import ModuloListaNegra from './components/ModuloListaNegra';
 import ModuloEmpleados from './components/ModuloEmpleados';
+import ModuloGastos from './components/ModuloGastos';
 import { Bell } from 'lucide-react';
 import DevTools from './components/DevTools';
 import Login from './components/Login';
@@ -316,6 +317,7 @@ function App() {
     { id: 'parqueadero', label: 'PARQUEADERO', labelShort: 'P', icon: Car, color: 'blue', bgColor: 'bg-blue-50', textColor: 'text-blue-600', hoverColor: 'hover:bg-blue-50' },
     { id: 'informales', label: 'INFORMALES', labelShort: 'I', icon: Users, color: 'orange', bgColor: 'bg-orange-50', textColor: 'text-orange-600', hoverColor: 'hover:bg-orange-50' },
     { id: 'reportes', label: 'REPORTES', labelShort: 'R', icon: TrendingUp, color: 'indigo', bgColor: 'bg-indigo-50', textColor: 'text-indigo-600', hoverColor: 'hover:bg-indigo-50' },
+    { id: 'gastos', label: 'GASTOS', labelShort: 'G', icon: TrendingDown, color: 'rose', bgColor: 'bg-rose-50', textColor: 'text-rose-600', hoverColor: 'hover:bg-rose-50' },
     { id: 'evidencias', label: 'EVIDENCIAS', labelShort: 'V', icon: AlertCircle, color: 'amber', bgColor: 'bg-amber-50', textColor: 'text-amber-600', hoverColor: 'hover:bg-amber-50' },
     { id: 'empleados', label: 'EMPLEADOS', labelShort: 'U', icon: Users, color: 'emerald', bgColor: 'bg-emerald-50', textColor: 'text-emerald-600', hoverColor: 'hover:bg-emerald-50' },
     { id: 'lista_negra', label: 'LISTA NEGRA', labelShort: 'LN', icon: ShieldAlert, color: 'red', bgColor: 'bg-red-50', textColor: 'text-red-600', hoverColor: 'hover:bg-red-50' },
@@ -632,6 +634,15 @@ function App() {
                 animate={{ opacity: 1, y: 0 }}
               >
                 <ModuloReportes selectedModule={selectedModule} />
+              </motion.div>
+            )}
+
+            {tab === 'gastos' && (
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+              >
+                <ModuloGastos admin={admin} />
               </motion.div>
             )}
 

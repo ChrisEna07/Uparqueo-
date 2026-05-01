@@ -6,7 +6,8 @@ import {
   Loader, Download, Upload, FileJson, Users, 
   ChevronRight, Key, Car, Store, Briefcase,
   UserPlus, UserCheck, ShieldCheck, Edit2, Eye, EyeOff, Clock,
-  LayoutGrid, MessageSquare, ShieldAlert, Search, ArrowLeft, Send, Menu
+  LayoutGrid, MessageSquare, ShieldAlert, Search, ArrowLeft, Send, Menu,
+  TrendingDown
 } from 'lucide-react';
 import { getAdmins, createAdmin, deleteAdmin, updateAdmin } from '../services/authService';
 import ModuloSoporte from './ModuloSoporte';
@@ -428,7 +429,7 @@ const DevTools = ({ onClose, currentAdmin, onAction }) => {
                       onClick={async () => {
                         setCargando(true);
                         try {
-                          const tables = ['registros_parqueadero', 'registros_parqueo', 'negocios_informales', 'historial_pagos_informales', 'historial_auditoria', 'mensajes', 'evidencias', 'lista_negra', 'configuracion', 'admins'];
+                          const tables = ['registros_parqueadero', 'registros_parqueo', 'negocios_informales', 'historial_pagos_informales', 'historial_auditoria', 'mensajes', 'evidencias', 'lista_negra', 'configuracion', 'admins', 'egresos'];
                           const backupData = {};
                           for (const table of tables) {
                             try {
@@ -541,6 +542,7 @@ const DevTools = ({ onClose, currentAdmin, onAction }) => {
                       { id: 'mensajes', label: 'MENSAJES', icon: MessageSquare, tables: ['mensajes'] },
                       { id: 'evidencias', label: 'EVIDENCIAS', icon: Eye, tables: ['evidencias'] },
                       { id: 'lista_negra', label: 'LISTA NEGRA', icon: ShieldAlert, tables: ['lista_negra'] },
+                      { id: 'gastos', label: 'GASTOS', icon: TrendingDown, tables: ['egresos'] },
                       { id: 'admins', label: 'CUENTAS', icon: Users, tables: ['admins'] }
                     ].map(s => (
                       <button 
@@ -621,7 +623,7 @@ const DevTools = ({ onClose, currentAdmin, onAction }) => {
                           if (doubleCheck.isConfirmed) {
                             setCargando(true);
                             try {
-                              const tables = ['registros_parqueadero', 'registros_parqueo', 'negocios_informales', 'historial_pagos_informales', 'historial_auditoria', 'mensajes', 'evidencias', 'lista_negra', 'admins'];
+                              const tables = ['registros_parqueadero', 'registros_parqueo', 'negocios_informales', 'historial_pagos_informales', 'historial_auditoria', 'mensajes', 'evidencias', 'lista_negra', 'admins', 'egresos'];
                               for (const table of tables) {
                                 try {
                                   if (table === 'admins') {

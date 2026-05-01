@@ -48,8 +48,17 @@ const ModuloReportes = ({ selectedModule = 'parqueadero' }) => {
   }, [tipoReporte, selectedModule]);
 
   const cargarAuditoria = async () => {
-    const res = await getAuditoria(selectedModule);
-    if (res.success) setAuditoriaData(res.data);
+    setCargando(true);
+    // Traer auditoría de todos los módulos para una trazabilidad completa
+    const { data: dataInf } = await getAuditoria('informales');
+    const { data: dataParq } = await getAuditoria('parqueadero');
+    const { data: dataGastos } = await getAuditoria('gastos');
+    
+    const combinada = [...(dataInf || []), ...(dataParq || []), ...(dataGastos || [])]
+        .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+        
+    setAuditoriaData(combinada);
+    setCargando(false);
   };
 
   const generarReporte = async (tipo) => {
@@ -311,7 +320,44 @@ const ModuloReportes = ({ selectedModule = 'parqueadero' }) => {
                 <p className="font-medium">Procesando información...</p>
               </div>
             ) : (
-              <div className="overflow-x-auto">
+            <>
+              {/* VISTA PARA MÓVILES (CARDS) */}
+              <div className="md:hidden space-y-4 p-4">
+                {reporteData?.data.map((reg) => (
+                  <div key={reg.id} className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
+                    <div className="flex justify-between items-start mb-2">
+                      <span className="font-mono font-bold bg-gray-100 px-2 py-1 rounded text-gray-700 text-xs">
+                        {selectedModule === 'parqueadero' ? reg.placa : reg.nombre_negocio}
+                      </span>
+                      <span className="text-lg font-black text-gray-900">
+                        ${(selectedModule === 'parqueadero' ? (reg.total_pagar || 0) : (reg.abonos || 0)).toLocaleString()}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center text-[10px] text-gray-500 mb-2">
+                      <span>{new Date(reg.entrada || reg.created_at).toLocaleString()}</span>
+                      <span className="font-black text-blue-600 bg-blue-50 px-2 py-1 rounded-lg uppercase">
+                        @{reg.usuario_recibe || reg.registrado_por || '---'}
+                      </span>
+                    </div>
+                    {selectedModule === 'informales' && (
+                      <div className="flex justify-between items-center mt-3 pt-3 border-t border-gray-50">
+                        <span className={`px-3 py-1 rounded-full text-[10px] font-black ${reg.activo ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                          {reg.activo ? 'ACTIVO' : 'SUSPENDIDO'}
+                        </span>
+                        <button 
+                          onClick={() => verDetallesAbonos(reg)}
+                          className="flex items-center gap-1 px-3 py-2 bg-blue-50 text-blue-600 rounded-lg font-bold text-[10px]"
+                        >
+                          <FileText size={12} /> Ver Historial
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              {/* VISTA PARA DESKTOP (TABLA) */}
+              <div className="hidden md:block overflow-x-auto">
                 <table className="w-full text-left">
                   <thead className="bg-gray-100 text-gray-600 text-xs uppercase font-black">
                     {selectedModule === 'parqueadero' ? (
@@ -393,66 +439,67 @@ const ModuloReportes = ({ selectedModule = 'parqueadero' }) => {
                   </tbody>
                 </table>
               </div>
+            </>
+          )}
+        </div>
+
+            {selectedModule === 'informales' && (
+              <div className="mt-8 p-6 bg-white rounded-[2rem] border border-gray-100 shadow-sm">
+                <h3 className="font-bold text-gray-800 flex items-center gap-2 mb-4 uppercase text-[10px] tracking-widest">
+                  <Store size={16} className="text-orange-600" /> 
+                  Actividad: Nuevos Negocios Registrados
+                </h3>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-[10px]">
+                    <thead className="bg-gray-50 text-gray-500 uppercase font-black">
+                      <tr>
+                        <th className="px-4 py-3">Fecha de Creación</th>
+                        <th className="px-4 py-3">Nombre del Negocio</th>
+                        <th className="px-4 py-3">Registrado Por</th>
+                        <th className="px-4 py-3">Fecha Inicio Cobro</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {reporteData?.data
+                        ?.filter(reg => {
+                          if (!reg.created_at) return false;
+                          const createdDate = new Date(reg.created_at).toISOString().split('T')[0];
+                          return createdDate >= fechasFiltro.inicio && createdDate <= fechasFiltro.fin;
+                        })
+                        .sort((a,b) => new Date(b.created_at) - new Date(a.created_at))
+                        .map(reg => (
+                        <tr key={`new-${reg.id}`} className="hover:bg-orange-50/30 transition-colors">
+                          <td className="px-4 py-3 text-gray-400 font-medium">
+                            {new Date(reg.created_at).toLocaleString()}
+                          </td>
+                          <td className="px-4 py-3 font-black text-gray-800 uppercase tracking-tighter">{reg.nombre_negocio}</td>
+                          <td className="px-4 py-3">
+                            <span className="bg-orange-100 text-orange-700 px-2 py-1 rounded-lg font-black">
+                              @{reg.registrado_por || '---'}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-gray-600 font-bold">{reg.fecha_inicio}</td>
+                        </tr>
+                      ))}
+                      {reporteData?.data?.filter(reg => {
+                          if (!reg.created_at) return false;
+                          const createdDate = new Date(reg.created_at).toISOString().split('T')[0];
+                          return createdDate >= fechasFiltro.inicio && createdDate <= fechasFiltro.fin;
+                        }).length === 0 && (
+                        <tr>
+                          <td colSpan="4" className="px-4 py-6 text-center text-gray-400 font-medium italic">
+                            No hay negocios registrados en este rango de fechas.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
             )}
           </div>
-          
-          {selectedModule === 'informales' && (
-            <div className="mt-8 p-6 bg-white rounded-[2rem] border border-gray-100 shadow-sm">
-              <h3 className="font-bold text-gray-800 flex items-center gap-2 mb-4 uppercase text-[10px] tracking-widest">
-                <Store size={16} className="text-orange-600" /> 
-                Actividad: Nuevos Negocios Registrados
-              </h3>
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-[10px]">
-                  <thead className="bg-gray-50 text-gray-500 uppercase font-black">
-                    <tr>
-                      <th className="px-4 py-3">Fecha de Creación</th>
-                      <th className="px-4 py-3">Nombre del Negocio</th>
-                      <th className="px-4 py-3">Registrado Por</th>
-                      <th className="px-4 py-3">Fecha Inicio Cobro</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {reporteData?.data
-                      ?.filter(reg => {
-                        if (!reg.created_at) return false;
-                        const createdDate = new Date(reg.created_at).toISOString().split('T')[0];
-                        return createdDate >= fechasFiltro.inicio && createdDate <= fechasFiltro.fin;
-                      })
-                      .sort((a,b) => new Date(b.created_at) - new Date(a.created_at))
-                      .map(reg => (
-                      <tr key={`new-${reg.id}`} className="hover:bg-orange-50/30 transition-colors">
-                        <td className="px-4 py-3 text-gray-400 font-medium">
-                          {new Date(reg.created_at).toLocaleString()}
-                        </td>
-                        <td className="px-4 py-3 font-black text-gray-800 uppercase tracking-tighter">{reg.nombre_negocio}</td>
-                        <td className="px-4 py-3">
-                          <span className="bg-orange-100 text-orange-700 px-2 py-1 rounded-lg font-black">
-                            @{reg.registrado_por || '---'}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 text-gray-600 font-bold">{reg.fecha_inicio}</td>
-                      </tr>
-                    ))}
-                    {reporteData?.data?.filter(reg => {
-                        if (!reg.created_at) return false;
-                        const createdDate = new Date(reg.created_at).toISOString().split('T')[0];
-                        return createdDate >= fechasFiltro.inicio && createdDate <= fechasFiltro.fin;
-                      }).length === 0 && (
-                      <tr>
-                        <td colSpan="4" className="px-4 py-6 text-center text-gray-400 font-medium italic">
-                          No hay negocios registrados en este rango de fechas.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-          </div>
-          </>
-        )}
+        </>
+      )}
 
         {pestañaSecundaria === 'auditoria' && (
           <div className="p-5 md:p-8 bg-gray-50/50 min-h-[500px]">
@@ -478,7 +525,43 @@ const ModuloReportes = ({ selectedModule = 'parqueadero' }) => {
                 </div>
               </div>
 
-              <div className="overflow-x-auto">
+              {/* VISTA PARA MÓVILES (CARDS) */}
+              <div className="md:hidden space-y-4 p-4">
+                {auditoriaData
+                  .filter(a => 
+                    a.usuario.toLowerCase().includes(busquedaAuditoria.toLowerCase()) || 
+                    a.accion.toLowerCase().includes(busquedaAuditoria.toLowerCase()) ||
+                    a.descripcion.toLowerCase().includes(busquedaAuditoria.toLowerCase())
+                  )
+                  .map((log) => (
+                    <div key={log.id} className="bg-white p-5 rounded-2xl border border-purple-100 shadow-sm">
+                      <div className="flex justify-between items-start mb-3">
+                        <span className={`px-2 py-1 rounded text-[9px] font-black uppercase tracking-widest border ${
+                          log.accion === 'CREACION' ? 'bg-blue-50 text-blue-600 border-blue-200' :
+                          log.accion === 'ABONO' ? 'bg-emerald-50 text-emerald-600 border-emerald-200' :
+                          log.accion === 'EXTENSION_DIAS' ? 'bg-orange-50 text-orange-600 border-orange-200' :
+                          log.accion === 'ESTADO' ? 'bg-rose-50 text-rose-600 border-rose-200' :
+                          'bg-gray-50 text-gray-600 border-gray-200'
+                        }`}>
+                          {log.accion}
+                        </span>
+                        <div className="text-right">
+                          <div className="text-[10px] font-bold text-gray-900">{new Date(log.created_at).toLocaleDateString()}</div>
+                          <div className="text-[9px] text-gray-400 font-black">{new Date(log.created_at).toLocaleTimeString()}</div>
+                        </div>
+                      </div>
+                      <p className="text-sm font-bold text-gray-700 mb-3">{log.descripcion}</p>
+                      <div className="flex items-center gap-2 pt-3 border-t border-gray-50">
+                        <span className="text-[10px] font-black text-purple-600 bg-purple-50 px-2 py-1 rounded-lg uppercase">
+                          @{log.usuario}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+              </div>
+
+              {/* VISTA PARA DESKTOP (TABLA) */}
+              <div className="hidden md:block overflow-x-auto">
                 <table className="w-full text-left">
                   <thead className="bg-gray-50 text-gray-500 text-[10px] uppercase font-black tracking-widest">
                     <tr>

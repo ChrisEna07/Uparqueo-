@@ -62,10 +62,24 @@ const ModuloInformales = ({ admin }) => {
     setTarifaGlobal(t);
   };
 
+  const [gastosHoy, setGastosHoy] = useState(0);
+
   const cargarNegocios = async () => {
     setCargando(true);
     const res = await getNegociosInformales();
     if (res.success) setNegocios(res.data);
+
+    // Cargar gastos de hoy para el balance neto
+    const hoy = new Date();
+    hoy.setHours(0,0,0,0);
+    const { data: egr } = await supabase
+      .from('egresos')
+      .select('monto')
+      .gte('created_at', hoy.toISOString());
+    
+    const sumGastos = egr?.reduce((acc, g) => acc + Number(g.monto), 0) || 0;
+    setGastosHoy(sumGastos);
+    
     setCargando(false);
   };
 
@@ -315,10 +329,10 @@ const ModuloInformales = ({ admin }) => {
             <div className={`p-3 rounded-2xl ${filtroEspecial === 'todos' ? 'bg-white/20' : 'bg-orange-50 text-orange-600'}`}>
               <TrendingUp size={24} />
             </div>
-            <span className={`text-[10px] font-black uppercase tracking-widest ${filtroEspecial === 'todos' ? 'text-white/60' : 'text-gray-400'}`}>Recaudado Total</span>
+            <span className={`text-[10px] font-black uppercase tracking-widest ${filtroEspecial === 'todos' ? 'text-white/60' : 'text-gray-400'}`}>Recaudado Neto (Hoy)</span>
           </div>
-          <p className="text-2xl font-black">${negocios.reduce((sum, n) => sum + (n.abonos || 0), 0).toLocaleString()}</p>
-          <p className={`text-[10px] font-bold mt-1 ${filtroEspecial === 'todos' ? 'text-white/60' : 'text-gray-400'}`}>Ver todos los negocios</p>
+          <p className="text-2xl font-black">${(negocios.reduce((sum, n) => sum + (n.abonos_hoy || 0), 0) - gastosHoy).toLocaleString()}</p>
+          <p className={`text-[10px] font-bold mt-1 ${filtroEspecial === 'todos' ? 'text-white/60' : 'text-gray-400'}`}>Descontando ${gastosHoy.toLocaleString()} en gastos</p>
         </motion.button>
 
         <motion.button 

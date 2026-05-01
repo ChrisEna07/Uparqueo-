@@ -8,6 +8,7 @@ const ModuloEstadisticas = () => {
   const [cargando, setCargando] = useState(true);
   
   const [ingresos, setIngresos] = useState({ dia: 0, semana: 0, mes: 0 });
+  const [gastosStats, setGastosStats] = useState({ dia: 0, semana: 0, mes: 0 });
   const [ingresosList, setIngresosList] = useState({ dia: [], semana: [], mes: [] });
   
   const [deudoresParqueo, setDeudoresParqueo] = useState([]);
@@ -21,16 +22,17 @@ const ModuloEstadisticas = () => {
   const cargarDatos = async () => {
     setCargando(true);
     
-    // 1. Ingresos del Parqueadero (Hoy, Semana, Mes)
+    // 1. Fechas de referencia
     const hoy = new Date();
     hoy.setHours(0, 0, 0, 0);
 
     const inicioSemana = new Date(hoy);
-    inicioSemana.setDate(hoy.getDate() - hoy.getDay()); // Domingo como inicio de semana
+    inicioSemana.setDate(hoy.getDate() - hoy.getDay());
     inicioSemana.setHours(0,0,0,0);
 
     const inicioMes = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
 
+    // 2. Cargar Ingresos Parqueadero
     const { data: parqueos, error: errParqueo } = await supabase
       .from('registros_parqueadero')
       .select('*')
@@ -45,26 +47,35 @@ const ModuloEstadisticas = () => {
       parqueos.forEach(reg => {
         const fechaSalida = new Date(reg.salida);
         const monto = reg.total_pagar || 0;
-        
         listMes.push(reg);
         sumMes += monto;
+        if (fechaSalida >= inicioSemana) { listSemana.push(reg); sumSemana += monto; }
+        if (fechaSalida >= hoy) { listDia.push(reg); sumDia += monto; }
+      });
+    }
 
-        if (fechaSalida >= inicioSemana) {
-          listSemana.push(reg);
-          sumSemana += monto;
-        }
-        
-        if (fechaSalida >= hoy) {
-          listDia.push(reg);
-          sumDia += monto;
-        }
+    // 3. Cargar Egresos (Gastos)
+    const { data: egresos, error: errEgresos } = await supabase
+      .from('egresos')
+      .select('*')
+      .gte('created_at', inicioMes.toISOString());
+
+    let gDia = 0, gSemana = 0, gMes = 0;
+    if (!errEgresos && egresos) {
+      egresos.forEach(g => {
+        const fecha = new Date(g.created_at);
+        const monto = Number(g.monto) || 0;
+        gMes += monto;
+        if (fecha >= inicioSemana) gSemana += monto;
+        if (fecha >= hoy) gDia += monto;
       });
     }
 
     setIngresos({ dia: sumDia, semana: sumSemana, mes: sumMes });
+    setGastosStats({ dia: gDia, semana: gSemana, mes: gMes });
     setIngresosList({ dia: listDia, semana: listSemana, mes: listMes });
 
-    // 2. Control de Deudores Críticos (Parqueadero > 7 días)
+    // 4. Control de Deudores Críticos
     const limiteDiasParqueo = new Date();
     limiteDiasParqueo.setDate(limiteDiasParqueo.getDate() - 7);
 
@@ -75,11 +86,9 @@ const ModuloEstadisticas = () => {
       .lte('entrada', limiteDiasParqueo.toISOString())
       .order('entrada', { ascending: true });
 
-    if (!errActivos && activosParqueo) {
-      setDeudoresParqueo(activosParqueo);
-    }
+    if (!errActivos && activosParqueo) setDeudoresParqueo(activosParqueo);
 
-    // 3. Negocios Informales al día
+    // 5. Negocios Informales al día
     const { data: informales, error: errInf } = await supabase
       .from('negocios_informales')
       .select('*')
@@ -89,9 +98,7 @@ const ModuloEstadisticas = () => {
     if (!errInf && informales) {
       informales.forEach(n => {
         const { deudaTotal } = calcularDeudaDetallada(n);
-        if (deudaTotal <= 0) {
-          alDia.push(n);
-        }
+        if (deudaTotal <= 0) alDia.push(n);
       });
     }
 
@@ -134,71 +141,58 @@ const ModuloEstadisticas = () => {
         </div>
       </div>
 
-      {/* Ingresos Parqueadero */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <motion.div 
-          whileHover={{ y: -5, scale: 1.02 }} 
-          onClick={() => abrirModal('dia')}
-          className="bg-white rounded-2xl p-6 shadow-lg border border-gray-100 relative overflow-hidden cursor-pointer group"
-        >
-          <div className="absolute top-0 right-0 w-2 h-full bg-blue-500"></div>
-          <div className="flex items-center gap-4 mb-4">
-            <div className="bg-blue-50 p-3 rounded-xl group-hover:bg-blue-100 transition-colors">
-              <Clock className="text-blue-500" size={24} />
-            </div>
-            <div>
-              <h3 className="text-gray-500 text-sm font-bold uppercase tracking-wider">Hoy</h3>
-              <p className="text-xs text-gray-400">Ingresos del día ({ingresosList.dia.length} registros)</p>
-            </div>
-          </div>
-          <p className="text-4xl font-black text-gray-800">${ingresos.dia.toLocaleString()}</p>
-          <p className="text-xs font-bold text-blue-500 mt-4 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-            <Receipt size={12} /> Ver historial detallado
-          </p>
-        </motion.div>
+      {/* Cards Financieras Responsivas */}
+      {['dia', 'semana', 'mes'].map((periodo) => {
+        const balance = ingresos[periodo] - gastosStats[periodo];
+        const config = {
+          dia: { label: 'Hoy', color: 'blue', icon: Clock },
+          semana: { label: 'Esta Semana', color: 'indigo', icon: CalendarIcon },
+          mes: { label: 'Este Mes', color: 'emerald', icon: TrendingUp }
+        }[periodo];
+        const Icon = config.icon;
 
-        <motion.div 
-          whileHover={{ y: -5, scale: 1.02 }} 
-          onClick={() => abrirModal('semana')}
-          className="bg-white rounded-2xl p-6 shadow-lg border border-gray-100 relative overflow-hidden cursor-pointer group"
-        >
-          <div className="absolute top-0 right-0 w-2 h-full bg-indigo-500"></div>
-          <div className="flex items-center gap-4 mb-4">
-            <div className="bg-indigo-50 p-3 rounded-xl group-hover:bg-indigo-100 transition-colors">
-              <CalendarIcon className="text-indigo-500" size={24} />
-            </div>
-            <div>
-              <h3 className="text-gray-500 text-sm font-bold uppercase tracking-wider">Esta Semana</h3>
-              <p className="text-xs text-gray-400">Ingresos semanales ({ingresosList.semana.length} registros)</p>
-            </div>
-          </div>
-          <p className="text-4xl font-black text-gray-800">${ingresos.semana.toLocaleString()}</p>
-          <p className="text-xs font-bold text-indigo-500 mt-4 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-            <Receipt size={12} /> Ver historial detallado
-          </p>
-        </motion.div>
+        return (
+          <div key={periodo} className="bg-white rounded-[2.5rem] p-8 shadow-xl border border-gray-100 overflow-hidden relative group">
+            <div className={`absolute top-0 right-0 w-2 h-full bg-${config.color}-500`}></div>
+            
+            <div className="flex flex-col md:flex-row justify-between gap-8">
+              {/* Sección Principal: Balance */}
+              <div className="flex-1">
+                <div className="flex items-center gap-4 mb-6">
+                  <div className={`bg-${config.color}-50 p-4 rounded-2xl`}>
+                    <Icon className={`text-${config.color}-500`} size={28} />
+                  </div>
+                  <div>
+                    <h3 className="text-gray-400 text-xs font-black uppercase tracking-widest">{config.label}</h3>
+                    <p className="text-3xl font-black text-gray-900">Balance: ${balance.toLocaleString()}</p>
+                  </div>
+                </div>
 
-        <motion.div 
-          whileHover={{ y: -5, scale: 1.02 }} 
-          onClick={() => abrirModal('mes')}
-          className="bg-white rounded-2xl p-6 shadow-lg border border-gray-100 relative overflow-hidden cursor-pointer group"
-        >
-          <div className="absolute top-0 right-0 w-2 h-full bg-emerald-500"></div>
-          <div className="flex items-center gap-4 mb-4">
-            <div className="bg-emerald-50 p-3 rounded-xl group-hover:bg-emerald-100 transition-colors">
-              <TrendingUp className="text-emerald-500" size={24} />
-            </div>
-            <div>
-              <h3 className="text-gray-500 text-sm font-bold uppercase tracking-wider">Este Mes</h3>
-              <p className="text-xs text-gray-400">Ingresos mensuales ({ingresosList.mes.length} registros)</p>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="bg-emerald-50/50 p-4 rounded-2xl border border-emerald-100">
+                    <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest mb-1">Ingresos</p>
+                    <p className="text-xl font-black text-emerald-700">${ingresos[periodo].toLocaleString()}</p>
+                  </div>
+                  <div className="bg-rose-50/50 p-4 rounded-2xl border border-rose-100">
+                    <p className="text-[10px] font-black text-rose-600 uppercase tracking-widest mb-1">Gastos</p>
+                    <p className="text-xl font-black text-rose-700">-${gastosStats[periodo].toLocaleString()}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Botón de Acción */}
+              <div className="flex flex-col justify-center">
+                <button 
+                  onClick={() => abrirModal(periodo)}
+                  className={`px-6 py-4 bg-${config.color}-600 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-lg hover:shadow-${config.color}-100 transition-all active:scale-95`}
+                >
+                  Ver Detalle
+                </button>
+              </div>
             </div>
           </div>
-          <p className="text-4xl font-black text-gray-800">${ingresos.mes.toLocaleString()}</p>
-          <p className="text-xs font-bold text-emerald-500 mt-4 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-            <Receipt size={12} /> Ver historial detallado
-          </p>
-        </motion.div>
-      </div>
+        );
+      })}
 
       {/* Deudores y Control */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -321,28 +315,44 @@ const ModuloEstadisticas = () => {
                     No hay registros de ingresos para este periodo.
                   </div>
                 ) : (
-                  <table className="w-full text-left border-collapse">
-                    <thead className="bg-gray-50 sticky top-0 shadow-sm">
-                      <tr>
-                        <th className="p-4 font-bold text-gray-600 text-sm">Placa</th>
-                        <th className="p-4 font-bold text-gray-600 text-sm">Cliente</th>
-                        <th className="p-4 font-bold text-gray-600 text-sm">Fecha Salida</th>
-                        <th className="p-4 font-bold text-gray-600 text-sm text-right">Monto Pagado</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100">
+                  <>
+                    {/* VISTA PARA MÓVILES */}
+                    <div className="md:hidden divide-y divide-gray-100">
                       {modalDatos.map(reg => (
-                        <tr key={reg.id} className="hover:bg-blue-50/50 transition-colors">
-                          <td className="p-4 font-bold text-gray-800">{reg.placa}</td>
-                          <td className="p-4 text-gray-600">{reg.cliente_nombre || '---'}</td>
-                          <td className="p-4 text-gray-600">{new Date(reg.salida).toLocaleString()}</td>
-                          <td className="p-4 font-bold text-green-600 text-right">
-                            ${reg.total_pagar?.toLocaleString()}
-                          </td>
-                        </tr>
+                        <div key={reg.id} className="p-4 flex justify-between items-center bg-white">
+                          <div>
+                            <p className="font-black text-gray-800 text-sm">{reg.placa}</p>
+                            <p className="text-[10px] text-gray-400">{new Date(reg.salida).toLocaleString()}</p>
+                          </div>
+                          <p className="font-black text-green-600 text-sm">${reg.total_pagar?.toLocaleString()}</p>
+                        </div>
                       ))}
-                    </tbody>
-                  </table>
+                    </div>
+
+                    {/* VISTA PARA DESKTOP */}
+                    <table className="hidden md:table w-full text-left border-collapse">
+                      <thead className="bg-gray-50 sticky top-0 shadow-sm">
+                        <tr>
+                          <th className="p-4 font-bold text-gray-600 text-sm">Placa</th>
+                          <th className="p-4 font-bold text-gray-600 text-sm">Cliente</th>
+                          <th className="p-4 font-bold text-gray-600 text-sm">Fecha Salida</th>
+                          <th className="p-4 font-bold text-gray-600 text-sm text-right">Monto Pagado</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {modalDatos.map(reg => (
+                          <tr key={reg.id} className="hover:bg-blue-50/50 transition-colors">
+                            <td className="p-4 font-bold text-gray-800">{reg.placa}</td>
+                            <td className="p-4 text-gray-600">{reg.cliente_nombre || '---'}</td>
+                            <td className="p-4 text-gray-600">{new Date(reg.salida).toLocaleString()}</td>
+                            <td className="p-4 font-bold text-green-600 text-right">
+                              ${reg.total_pagar?.toLocaleString()}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </>
                 )}
               </div>
               <div className="bg-gray-50 p-4 border-t border-gray-100 flex justify-end">
