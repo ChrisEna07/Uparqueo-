@@ -194,6 +194,32 @@ export const desactivarNegocio = async (id, nuevoEstado, adminUsername = 'sistem
   }
 };
 
+/**
+ * Actualiza la tarifa diaria de un negocio y registra el cambio en auditoría
+ */
+export const actualizarTarifaNegocio = async (id, nombreNegocio, tarifaAnterior, tarifaNueva, adminUsername = 'sistema') => {
+  try {
+    const { error } = await supabase
+      .from('negocios_informales')
+      .update({ valor_diario: parseFloat(tarifaNueva) })
+      .eq('id', id);
+      
+    if (error) throw error;
+
+    await registrarAuditoria(
+      'informales', 
+      'AJUSTE_TARIFA', 
+      `Cambio de tarifa en ${nombreNegocio}: de $${parseFloat(tarifaAnterior).toLocaleString()} a $${parseFloat(tarifaNueva).toLocaleString()}`, 
+      adminUsername
+    );
+
+    return { success: true };
+  } catch (error) {
+    console.error("Error en actualizarTarifaNegocio:", error);
+    throw error;
+  }
+};
+
 
 /**
  * Crea un nuevo registro de negocio informal

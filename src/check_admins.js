@@ -5,16 +5,14 @@ const supabaseAnonKey = 'sb_publishable_ti60-o1v70dpDQvM73ILsQ_dhhUJv8O';
 
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
-async function checkAdmins() {
+async function check() {
   const { data, error } = await supabase.from('admins').select('*');
-  if (error) {
-    console.error('Error fetching admins:', error);
-  } else {
-    console.log('Admins found:', data.length);
-    data.forEach(u => {
-      console.log(`- ID: ${u.id}, Username: ${u.username}, Role: ${u.rol}`);
+  if (error) console.error(error);
+  else {
+    console.log(`Admins found: ${data.length}`);
+    data.forEach(a => {
+      console.log(`- ID: ${a.id}, Username: ${a.username}, Name: ${a.nombre_completo}, Role: ${a.rol}`);
     });
   }
 }
-
-checkAdmins();
+check();

@@ -164,25 +164,26 @@ function App() {
         try {
           const { adminData, view, module, activeTab } = JSON.parse(savedSession);
           
-          // Verificar contra la base de datos si el usuario AÚN existe
+          // Verificar contra la base de datos y OBTENER DATOS FRESCOS
           if (adminData && adminData.id) {
-            const { data, error } = await supabase
+            const { data: freshAdminData, error } = await supabase
               .from('admins')
-              .select('id')
+              .select('*')
               .eq('id', adminData.id)
               .maybeSingle();
 
-            if (error || !data) {
+            if (error || !freshAdminData) {
               // El usuario fue eliminado o no existe, forzar cierre de sesión
-              console.warn("Sesión inválida: El usuario ya no existe en la base de datos.");
+              console.warn("Sesión inválida: El usuario ya no existe o hubo un error.");
               localStorage.removeItem('uparqueo_session');
               setAdmin(null);
               setAppView('login');
               return;
             }
+            
+            // Usar los datos frescos de la DB, no los del localStorage antiguo
+            setAdmin(freshAdminData);
           }
-
-          setAdmin(adminData);
           setAppView(view || 'home');
           if (module) setSelectedModule(module);
           if (activeTab) setTab(activeTab);
@@ -413,7 +414,9 @@ function App() {
     setAdmin(null);
     setSelectedModule(null);
     setAppView('login');
-    localStorage.removeItem('uparqueo_session');
+    setTab('parqueadero');
+    localStorage.clear(); // Limpieza total para evitar rastro de usuarios anteriores
+    window.location.reload(); // Recarga forzada para limpiar estados de memoria
   };
 
   if (appView === 'login') {
@@ -554,7 +557,8 @@ function App() {
                   <p className="text-[8px] font-bold opacity-70 uppercase tracking-tighter leading-none mb-1">
                     {admin?.rol?.startsWith('empleado') ? 'Empleado' : 'Admin'}
                   </p>
-                  <p className="text-xs font-black leading-none">{admin?.nombre_completo?.split(' ')[0] || admin?.username}</p>
+                  <p className="text-xs font-black leading-none">{admin?.nombre_completo || admin?.username}</p>
+                  <p className="text-[9px] font-bold text-blue-400 mt-0.5">@{admin?.username}</p>
                 </div>
               </div>
             </div>

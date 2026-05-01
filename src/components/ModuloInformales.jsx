@@ -12,7 +12,8 @@ import {
   registrarNegocio, 
   registrarAbono,
   desactivarNegocio,
-  agregarDiasManuales
+  agregarDiasManuales,
+  actualizarTarifaNegocio
 } from '../services/informalService';
 import { getTarifaInformal } from '../services/informalService';
 import { generarPDFInformal } from '../services/pdfService';
@@ -231,6 +232,41 @@ const ModuloInformales = ({ admin }) => {
     }
   };
 
+  const handleEditarTarifa = async (negocio) => {
+    const { value: nuevaTarifa } = await Swal.fire({
+      title: 'Ajustar Tarifa Diaria',
+      text: `Negocio: ${negocio.nombre_negocio}`,
+      input: 'number',
+      inputLabel: 'Nueva tarifa diaria ($)',
+      inputValue: negocio.valor_diario,
+      showCancelButton: true,
+      confirmButtonText: 'Actualizar Tarifa',
+      confirmButtonColor: '#2563eb',
+      inputValidator: (value) => {
+        if (!value || value <= 0) return 'Ingrese un valor válido';
+      }
+    });
+
+    if (nuevaTarifa) {
+      setProcesando(true);
+      try {
+        await actualizarTarifaNegocio(
+          negocio.id, 
+          negocio.nombre_negocio, 
+          negocio.valor_diario, 
+          nuevaTarifa, 
+          admin?.username || 'admin'
+        );
+        await Swal.fire('Tarifa Actualizada', 'Los cálculos de deuda se han actualizado.', 'success');
+        cargarNegocios();
+      } catch (err) {
+        Swal.fire('Error', 'No se pudo actualizar la tarifa', 'error');
+      } finally {
+        setProcesando(false);
+      }
+    }
+  };
+
   const negociosFiltrados = negocios.filter(n => {
     const coincideBusqueda = n.nombre_negocio.toLowerCase().includes(busqueda.toLowerCase()) ||
                              n.nombre_cliente.toLowerCase().includes(busqueda.toLowerCase());
@@ -393,6 +429,13 @@ const ModuloInformales = ({ admin }) => {
                     </div>
                     <div className="flex items-center gap-2 text-blue-600 font-black text-[10px] uppercase tracking-widest">
                       Tarifa: ${n.valor_diario?.toLocaleString() || '---'} / día
+                      <button 
+                        onClick={() => handleEditarTarifa(n)}
+                        className="ml-2 p-1.5 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-600 hover:text-white transition-all shadow-sm"
+                        title="Corregir Tarifa"
+                      >
+                        <Edit2 size={10} />
+                      </button>
                     </div>
                   </div>
                 </div>
