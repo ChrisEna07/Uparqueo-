@@ -70,12 +70,26 @@ export const generarPDFInformal = (negocio, tarifaGlobal) => {
     headStyles: { fillColor: LOGO_COLOR },
     head: [['Concepto', 'Detalle']],
     body: [
-      ['Tarifa por Día:', `$${tarifaGlobal.toLocaleString()}`],
-      ['Días de Ajuste (Manual):', `${negocio.dias_manuales || 0} días`],
-      ['Total Abonos Recibidos:', `$${(negocio.abonos || 0).toLocaleString()}`],
-      ['Deuda Pendiente a la Fecha:', `$${(negocio.deuda_acumulada || 0).toLocaleString()}`],
+      ['Tarifa por Día:', `$${(negocio.valor_diario || tarifaGlobal).toLocaleString()}`],
+      ['Días Transcurridos:', `${negocio.dias_totales || 0} días`],
+      ['(+) Cargos Adicionales:', `$${(negocio.suma_cargos_extra || 0).toLocaleString()}`],
+      ['(-) Abonos Recibidos:', `$${(negocio.abonos || 0).toLocaleString()}`],
+      ['(=) DEUDA PENDIENTE:', `$${(negocio.deuda_acumulada || 0).toLocaleString()}`],
     ],
   });
+
+  // Detalle de Cargos Extra (Si existen)
+  if (negocio.lista_cargos && negocio.lista_cargos.length > 0) {
+    doc.setFontSize(10);
+    doc.text('DETALLE DE CARGOS EXTRA:', 14, doc.lastAutoTable.finalY + 10);
+    autoTable(doc, {
+      startY: doc.lastAutoTable.finalY + 15,
+      head: [['Descripción', 'Monto']],
+      body: negocio.lista_cargos.map(c => [c.nombre_cargo, `$${Number(c.monto).toLocaleString()}`]),
+      headStyles: { fillColor: [245, 158, 11] }, // Amber-500
+      styles: { fontSize: 8 }
+    });
+  }
 
   // Pie de página
   const pageCount = doc.internal.getNumberOfPages();

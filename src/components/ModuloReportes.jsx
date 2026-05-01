@@ -9,6 +9,7 @@ import {
 import { getReportePorFechas } from '../services/parqueoService';
 import { getReporteInformal, getHistorialAbonos } from '../services/informalService';
 import { getAuditoria } from '../services/auditService';
+import { getGastosPorFechas } from '../services/gastosService';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
@@ -84,11 +85,40 @@ const ModuloReportes = ({ selectedModule = 'parqueadero' }) => {
         }
 
         const res = await getReportePorFechas(inicio, fin);
-        setReporteData(res);
+        
+        // Obtener gastos del mismo periodo
+        const { data: gastos } = await getGastosPorFechas(inicio, fin);
+        const sumGastos = (gastos || []).reduce((acc, g) => acc + Number(g.monto), 0);
+        
+        setReporteData({
+          ...res,
+          resumen: {
+            ...res.resumen,
+            totalGastos: sumGastos,
+            balanceNeto: (res.resumen.totalIngresos || 0) - sumGastos
+          },
+          gastos: gastos || []
+        });
       } else {
-        // Reporte de Informales (Resumen actual ya que no hay histórico)
+        // Reporte de Informales
         const res = await getReporteInformal();
-        setReporteData(res);
+        
+        // Para informales, el "balance hoy" también debe restar gastos de hoy
+        const hoy = new Date();
+        const inicio = new Date(hoy.setHours(0,0,0,0)).toISOString();
+        const fin = new Date(hoy.setHours(23,59,59,999)).toISOString();
+        const { data: gastosHoy } = await getGastosPorFechas(inicio, fin);
+        const sumGastos = (gastosHoy || []).reduce((acc, g) => acc + Number(g.monto), 0);
+
+        setReporteData({
+          ...res,
+          resumen: {
+            ...res.resumen,
+            totalGastos: sumGastos,
+            balanceNeto: (res.resumen.totalRecaudado || 0) - sumGastos
+          },
+          gastos: gastosHoy || []
+        });
       }
     } catch (error) {
       console.error('Error generando reporte:', error);
@@ -111,24 +141,59 @@ const ModuloReportes = ({ selectedModule = 'parqueadero' }) => {
 
     const doc = new jsPDF();
     const isParqueo = selectedModule === 'parqueadero';
-    const title = `Reporte ${tipoReporte.toUpperCase()} - UPARQUEO (${isParqueo ? 'Parqueo' : 'Informales'})`;
+    const title = `REPORTE ${tipoReporte.toUpperCase()} - UPARQUEO`;
+    const subtitle = isParqueo ? 'GESTIÓN DE PARQUEADERO' : 'GESTIÓN DE NEGOCIOS INFORMALES';
     
-    doc.setFontSize(20);
-    doc.text(title, 14, 22);
+    // Header Estilizado
+    doc.setFillColor(isParqueo ? 37 : 249, isParqueo ? 99 : 115, isParqueo ? 235 : 22);
+    doc.rect(0, 0, 210, 40, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(22);
+    doc.setFont('helvetica', 'bold');
+    doc.text(title, 14, 25);
+    doc.setFontSize(10);
+    doc.text(subtitle, 14, 32);
+    
+    // Resumen Financiero
+    doc.setTextColor(0, 0, 0);
+    doc.setFontSize(14);
+    doc.text('RESUMEN FINANCIERO', 14, 55);
+    
     doc.setFontSize(11);
-    doc.text(`Generado el: ${new Date().toLocaleString()}`, 14, 30);
+    doc.setFont('helvetica', 'normal');
+    const bruto = isParqueo ? (reporteData?.resumen?.totalIngresos || 0) : (reporteData?.resumen?.totalRecaudado || 0);
+    const gastos = reporteData?.resumen?.totalGastos || 0;
+    const neto = reporteData?.resumen?.balanceNeto || 0;
+
+    doc.text(`(+) Ingresos Brutos:`, 14, 65);
+    doc.text(`$${bruto.toLocaleString()}`, 100, 65, { align: 'right' });
     
-    if (isParqueo) {
-      doc.text(`Total Ingresos: $${(reporteData?.resumen?.totalIngresos || 0).toLocaleString()}`, 14, 38);
-      doc.text(`Total Vehículos: ${reporteData?.resumen?.totalVehiculos || 0}`, 14, 46);
-    } else {
-      doc.text(`Total Recaudado: $${(reporteData?.resumen?.totalRecaudado || 0).toLocaleString()}`, 14, 38);
-      doc.text(`Deuda Total: $${(reporteData?.resumen?.totalDeuda || 0).toLocaleString()}`, 14, 46);
-    }
+    doc.setTextColor(220, 0, 0);
+    doc.text(`(-) Gastos/Egresos:`, 14, 72);
+    doc.text(`$${gastos.toLocaleString()}`, 100, 72, { align: 'right' });
+    
+    doc.setLineWidth(0.5);
+    doc.line(14, 75, 100, 75);
+    
+    doc.setTextColor(0, 120, 0);
+    doc.setFont('helvetica', 'bold');
+    doc.text(`(=) BALANCE NETO:`, 14, 82);
+    doc.text(`$${neto.toLocaleString()}`, 100, 82, { align: 'right' });
+
+    doc.setTextColor(100, 100, 100);
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Generado por: Uparqueo System`, 14, 92);
+    doc.text(`Fecha: ${new Date().toLocaleString()}`, 14, 97);
+
+    // Tabla de Ingresos
+    doc.setTextColor(0, 0, 0);
+    doc.setFontSize(12);
+    doc.text(isParqueo ? 'DETALLE DE VEHÍCULOS' : 'DETALLE DE RECAUDOS', 14, 110);
 
     const tableHeaders = isParqueo 
-      ? [['Fecha/Hora', 'Placa', 'Tipo', 'Monto', 'Usuario', 'Cliente']]
-      : [['Negocio', 'Dueño', 'Celular', 'Recaudado', 'Usuario', 'Estado']];
+      ? [['Fecha/Hora', 'Placa', 'Tipo', 'Monto', 'Usuario']]
+      : [['Negocio', 'Dueño', 'Celular', 'Abonado', 'Estado']];
 
     const tableData = reporteData.data.map(reg => {
       if (isParqueo) {
@@ -137,8 +202,7 @@ const ModuloReportes = ({ selectedModule = 'parqueadero' }) => {
           reg.placa || '---',
           (reg.tipo_vehiculo || '---').toUpperCase(),
           `$${(reg.total_pagar || 0).toLocaleString()}`,
-          reg.usuario_recibe || reg.registrado_por || '---',
-          reg.cliente_nombre || '---'
+          reg.usuario_recibe || reg.registrado_por || '---'
         ];
       } else {
         return [
@@ -146,21 +210,41 @@ const ModuloReportes = ({ selectedModule = 'parqueadero' }) => {
           reg.nombre_cliente || '---',
           reg.celular || '---',
           `$${(reg.abonos || 0).toLocaleString()}`,
-          reg.registrado_por || '---',
           (reg.activo ? 'ACTIVO' : 'INACTIVO')
         ];
       }
     });
 
     autoTable(doc, {
-      startY: 55,
+      startY: 115,
       head: tableHeaders,
       body: tableData,
       headStyles: { fillColor: isParqueo ? [37, 99, 235] : [249, 115, 22] },
       styles: { fontSize: 8 }
     });
 
-    doc.save(`reporte_${selectedModule}_${Date.now()}.pdf`);
+    // Tabla de Gastos (Si existen)
+    if (reporteData.gastos && reporteData.gastos.length > 0) {
+      const finalY = doc.lastAutoTable.finalY || 150;
+      doc.setFontSize(12);
+      doc.text('DETALLE DE GASTOS / EGRESOS', 14, finalY + 15);
+      
+      autoTable(doc, {
+        startY: finalY + 20,
+        head: [['Fecha', 'Descripción', 'Categoría', 'Monto', 'Usuario']],
+        body: reporteData.gastos.map(g => [
+          new Date(g.created_at).toLocaleString(),
+          g.descripcion,
+          g.categoria,
+          `$${Number(g.monto).toLocaleString()}`,
+          g.registrado_por
+        ]),
+        headStyles: { fillColor: [225, 29, 72] }, // Rose-600
+        styles: { fontSize: 8 }
+      });
+    }
+
+    doc.save(`reporte_final_${tipoReporte}_${Date.now()}.pdf`);
   };
 
   const exportarExcel = () => {
@@ -250,58 +334,63 @@ const ModuloReportes = ({ selectedModule = 'parqueadero' }) => {
           <>
             {/* Resumen Cards */}
             <div className="p-5 md:p-8">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6 mb-8">
-            <div className="bg-gradient-to-br from-green-50 to-emerald-50 p-6 rounded-2xl border border-green-100">
-              <div className="flex justify-between items-start mb-4">
-                <div className="bg-green-500 p-3 rounded-xl text-white shadow-lg shadow-green-200">
-                  <TrendingUp size={24} />
-                </div>
-                <span className="text-green-600 font-bold text-sm bg-white px-3 py-1 rounded-full shadow-sm">Ingresos</span>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6 mb-8">
+            {/* INGRESO BRUTO */}
+            <div className="bg-white p-6 rounded-3xl border-2 border-gray-100 shadow-sm relative overflow-hidden group hover:border-blue-200 transition-all">
+              <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:scale-125 transition-transform">
+                <TrendingUp size={60} />
               </div>
-              <h3 className="text-gray-500 text-sm font-semibold uppercase tracking-wider">Total Recaudado</h3>
-              <p className="text-3xl font-black text-gray-900 mt-1">
+              <h3 className="text-gray-400 text-[10px] font-black uppercase tracking-widest">Recaudado Bruto</h3>
+              <p className="text-2xl font-black text-gray-800 mt-2">
                 ${(selectedModule === 'parqueadero' 
                   ? reporteData?.resumen?.totalIngresos 
                   : reporteData?.resumen?.totalRecaudado)?.toLocaleString() || '0'}
               </p>
+              <span className="text-[9px] font-bold text-blue-500 bg-blue-50 px-2 py-1 rounded-full mt-3 inline-block">Suma total de caja</span>
             </div>
 
-            <div className="bg-gradient-to-br from-blue-50 to-indigo-50 p-6 rounded-2xl border border-blue-100">
-              <div className="flex justify-between items-start mb-4">
-                <div className="bg-blue-500 p-3 rounded-xl text-white shadow-lg shadow-blue-200">
-                  {selectedModule === 'parqueadero' ? <Car size={24} /> : <TrendingUp size={24} />}
-                </div>
-                <span className="text-blue-600 font-bold text-sm bg-white px-3 py-1 rounded-full shadow-sm">
-                  {selectedModule === 'parqueadero' ? 'Flujo' : 'Estado'}
-                </span>
+            {/* GASTOS */}
+            <div className="bg-white p-6 rounded-3xl border-2 border-gray-100 shadow-sm relative overflow-hidden group hover:border-rose-200 transition-all">
+              <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:scale-125 transition-transform">
+                <TrendingUp size={60} className="rotate-180" />
               </div>
-              <h3 className="text-gray-500 text-sm font-semibold uppercase tracking-wider">
-                {selectedModule === 'parqueadero' ? 'Vehículos Totales' : 'Deuda Pendiente'}
-              </h3>
-              <p className="text-3xl font-black text-gray-900 mt-1">
-                {selectedModule === 'parqueadero' 
-                  ? (reporteData?.resumen?.totalVehiculos || '0')
-                  : `$${reporteData?.resumen?.totalDeuda?.toLocaleString() || '0'}`
-                }
+              <h3 className="text-gray-400 text-[10px] font-black uppercase tracking-widest">Gastos / Egresos</h3>
+              <p className="text-2xl font-black text-rose-600 mt-2">
+                -${(reporteData?.resumen?.totalGastos || 0).toLocaleString()}
               </p>
+              <span className="text-[9px] font-bold text-rose-500 bg-rose-50 px-2 py-1 rounded-full mt-3 inline-block">Dinero que salió</span>
             </div>
 
-            <div className="bg-gradient-to-br from-purple-50 to-fuchsia-50 p-6 rounded-2xl border border-purple-100">
-              <div className="flex justify-between items-start mb-4">
-                <div className="bg-purple-500 p-3 rounded-xl text-white shadow-lg shadow-purple-200">
-                  <FileText size={24} />
-                </div>
-                <div className="flex gap-2">
-                  <button onClick={exportarPDF} className="p-2 bg-white rounded-lg text-red-500 shadow-sm hover:scale-110 transition-transform">
-                    <FileText size={18} />
-                  </button>
-                  <button onClick={exportarExcel} className="p-2 bg-white rounded-lg text-green-600 shadow-sm hover:scale-110 transition-transform">
-                    <Table size={18} />
-                  </button>
-                </div>
+            {/* BALANCE NETO */}
+            <div className="bg-emerald-600 p-6 rounded-3xl shadow-xl shadow-emerald-100 relative overflow-hidden group">
+              <div className="absolute top-0 right-0 p-4 opacity-20 group-hover:scale-125 transition-transform">
+                <BarChart2 size={60} className="text-white" />
               </div>
-              <h3 className="text-gray-500 text-sm font-semibold uppercase tracking-wider">Exportar Data</h3>
-              <p className="text-sm text-gray-600 mt-2">Descarga el historial completo en formato profesional.</p>
+              <h3 className="text-white/60 text-[10px] font-black uppercase tracking-widest">Balance Neto</h3>
+              <p className="text-2xl font-black text-white mt-2">
+                ${(reporteData?.resumen?.balanceNeto || 0).toLocaleString()}
+              </p>
+              <span className="text-[9px] font-bold text-white bg-white/20 px-2 py-1 rounded-full mt-3 inline-block">Utilidad Real</span>
+            </div>
+
+            {/* EXPORTAR */}
+            <div className="bg-gradient-to-br from-indigo-50 to-blue-50 p-6 rounded-3xl border border-blue-100 flex flex-col justify-center gap-3">
+              <div className="flex gap-3">
+                <button 
+                  onClick={exportarPDF} 
+                  className="flex-1 bg-white p-3 rounded-2xl text-rose-600 shadow-sm hover:bg-rose-600 hover:text-white transition-all flex flex-col items-center gap-1 border border-rose-100"
+                >
+                  <FileText size={20} />
+                  <span className="text-[8px] font-black uppercase">PDF</span>
+                </button>
+                <button 
+                  onClick={exportarExcel} 
+                  className="flex-1 bg-white p-3 rounded-2xl text-emerald-600 shadow-sm hover:bg-emerald-600 hover:text-white transition-all flex flex-col items-center gap-1 border border-emerald-100"
+                >
+                  <Table size={20} />
+                  <span className="text-[8px] font-black uppercase">EXCEL</span>
+                </button>
+              </div>
             </div>
           </div>
 

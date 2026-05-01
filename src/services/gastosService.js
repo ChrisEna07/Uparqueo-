@@ -1,6 +1,23 @@
 import { supabase } from '../lib/supabase';
 import { registrarAuditoria } from './auditService';
 
+export const getGastosPorFechas = async (inicio, fin) => {
+  try {
+    const { data, error } = await supabase
+      .from('egresos')
+      .select('*')
+      .gte('created_at', inicio)
+      .lte('created_at', fin)
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+    return { success: true, data };
+  } catch (error) {
+    console.error('Error al obtener gastos por fechas:', error);
+    return { success: false, error: error.message };
+  }
+};
+
 export const getGastos = async () => {
   try {
     const { data, error } = await supabase

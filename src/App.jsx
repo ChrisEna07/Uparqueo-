@@ -331,7 +331,7 @@ function App() {
     if (esEmpleado) {
       // Pestañas permitidas para empleados según solicitud: Informales, Evidencias, Lista Negra
       // Además de notificaciones y ajustes que son básicos
-      const permitidas = ['informales', 'evidencias', 'lista_negra', 'ajustes'];
+      const permitidas = ['informales', 'gastos', 'evidencias', 'lista_negra', 'ajustes'];
       return permitidas.includes(t.id);
     }
 
