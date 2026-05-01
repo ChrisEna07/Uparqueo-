@@ -24,6 +24,7 @@ import Swal from 'sweetalert2';
 const ModuloInformales = ({ admin }) => {
   const [negocios, setNegocios] = useState([]);
   const [cargando, setCargando] = useState(true);
+  const [cargaLenta, setCargaLenta] = useState(false);
   const [procesando, setProcesando] = useState(false);
   const [busqueda, setBusqueda] = useState('');
   const [filtroEspecial, setFiltroEspecial] = useState('todos'); // todos, al_dia, deudores
@@ -67,21 +68,34 @@ const ModuloInformales = ({ admin }) => {
 
   const cargarNegocios = async () => {
     setCargando(true);
-    const res = await getNegociosInformales();
-    if (res.success) setNegocios(res.data);
+    setCargaLenta(false);
+    
+    // Iniciar cronómetro de lentitud (5 segundos)
+    const timer = setTimeout(() => {
+      setCargaLenta(true);
+    }, 5000);
 
-    // Cargar gastos de hoy para el balance neto
-    const hoy = new Date();
-    hoy.setHours(0,0,0,0);
-    const { data: egr } = await supabase
-      .from('egresos')
-      .select('monto')
-      .gte('created_at', hoy.toISOString());
-    
-    const sumGastos = egr?.reduce((acc, g) => acc + Number(g.monto), 0) || 0;
-    setGastosHoy(sumGastos);
-    
-    setCargando(false);
+    try {
+      const res = await getNegociosInformales();
+      if (res.success) setNegocios(res.data);
+
+      // Cargar gastos de hoy para el balance neto
+      const hoy = new Date();
+      hoy.setHours(0,0,0,0);
+      const { data: egr } = await supabase
+        .from('egresos')
+        .select('monto')
+        .gte('created_at', hoy.toISOString());
+      
+      const sumGastos = egr?.reduce((acc, g) => acc + Number(g.monto), 0) || 0;
+      setGastosHoy(sumGastos);
+    } catch (err) {
+      console.error("Error cargando:", err);
+    } finally {
+      clearTimeout(timer);
+      setCargando(false);
+      setCargaLenta(false);
+    }
   };
 
   const handleRegistro = async (e) => {
@@ -346,6 +360,8 @@ const ModuloInformales = ({ admin }) => {
   });
 
   const totalRecaudado = negocios.reduce((sum, n) => sum + (n.abonos || 0), 0);
+  const totalActivos = negocios.filter(n => n.activo).length;
+  const totalInactivos = negocios.filter(n => !n.activo).length;
   const alDiaCount = negocios.filter(n => n.activo && n.deuda_acumulada <= 0).length;
   const deudoresCount = negocios.filter(n => n.activo && n.deuda_acumulada >= (tarifaGlobal * 3)).length;
 
@@ -370,50 +386,99 @@ const ModuloInformales = ({ admin }) => {
       </div>
 
       {/* METRICAS RAPIDAS */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 mb-8">
+        {/* RECAUDO NETO */}
         <motion.button 
           whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
           onClick={() => setFiltroEspecial('todos')}
-          className={`p-6 rounded-[2rem] border-2 transition-all text-left ${filtroEspecial === 'todos' ? 'bg-orange-600 text-white border-orange-600 shadow-xl shadow-orange-100' : 'bg-white text-gray-800 border-gray-100 shadow-sm hover:border-orange-200'}`}
+          className={`p-5 rounded-3xl border-2 transition-all text-left ${filtroEspecial === 'todos' ? 'bg-orange-600 text-white border-orange-600 shadow-xl shadow-orange-100' : 'bg-white text-gray-800 border-gray-100 shadow-sm hover:border-orange-200'}`}
         >
-          <div className="flex justify-between items-center mb-4">
-            <div className={`p-3 rounded-2xl ${filtroEspecial === 'todos' ? 'bg-white/20' : 'bg-orange-50 text-orange-600'}`}>
-              <TrendingUp size={24} />
-            </div>
-            <span className={`text-[10px] font-black uppercase tracking-widest ${filtroEspecial === 'todos' ? 'text-white/60' : 'text-gray-400'}`}>Recaudado Neto (Hoy)</span>
+          <p className={`text-[9px] font-black uppercase tracking-widest mb-3 ${filtroEspecial === 'todos' ? 'text-white/60' : 'text-gray-400'}`}>Recaudado Neto</p>
+          <p className="text-xl font-black">${(negocios.reduce((sum, n) => sum + (n.abonos_hoy || 0), 0) - gastosHoy).toLocaleString()}</p>
+          <div className="mt-2 flex items-center gap-2">
+             <div className={`p-1.5 rounded-lg ${filtroEspecial === 'todos' ? 'bg-white/20' : 'bg-orange-50 text-orange-600'}`}>
+                <TrendingUp size={14} />
+             </div>
+             <span className="text-[9px] font-bold opacity-60">Balance Hoy</span>
           </div>
-          <p className="text-2xl font-black">${(negocios.reduce((sum, n) => sum + (n.abonos_hoy || 0), 0) - gastosHoy).toLocaleString()}</p>
-          <p className={`text-[10px] font-bold mt-1 ${filtroEspecial === 'todos' ? 'text-white/60' : 'text-gray-400'}`}>Descontando ${gastosHoy.toLocaleString()} en gastos</p>
         </motion.button>
 
+        {/* TOTAL REGISTROS */}
+        <motion.button 
+          whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
+          onClick={() => setFiltroEspecial('todos')}
+          className="p-5 rounded-3xl bg-white border-2 border-gray-100 shadow-sm text-left hover:border-blue-200 transition-all"
+        >
+          <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-3">Total Negocios</p>
+          <p className="text-xl font-black text-gray-800">{negocios.length}</p>
+          <div className="mt-2 flex items-center gap-2">
+             <div className="p-1.5 rounded-lg bg-blue-50 text-blue-600">
+                <Store size={14} />
+             </div>
+             <span className="text-[9px] font-bold text-gray-400">En base de datos</span>
+          </div>
+        </motion.button>
+
+        {/* ACTIVOS */}
+        <motion.button 
+          whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
+          className="p-5 rounded-3xl bg-white border-2 border-gray-100 shadow-sm text-left hover:border-emerald-200 transition-all"
+        >
+          <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-3">Activos</p>
+          <p className="text-xl font-black text-emerald-600">{totalActivos}</p>
+          <div className="mt-2 flex items-center gap-2">
+             <div className="p-1.5 rounded-lg bg-emerald-50 text-emerald-600">
+                <CheckCircle size={14} />
+             </div>
+             <span className="text-[9px] font-bold text-gray-400">Operando hoy</span>
+          </div>
+        </motion.button>
+
+        {/* INACTIVOS */}
+        <motion.button 
+          whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
+          className="p-5 rounded-3xl bg-white border-2 border-gray-100 shadow-sm text-left hover:border-gray-300 transition-all"
+        >
+          <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-3">Inactivos</p>
+          <p className="text-xl font-black text-gray-500">{totalInactivos}</p>
+          <div className="mt-2 flex items-center gap-2">
+             <div className="p-1.5 rounded-lg bg-gray-100 text-gray-500">
+                <Power size={14} />
+             </div>
+             <span className="text-[9px] font-bold text-gray-400">Fuera de servicio</span>
+          </div>
+        </motion.button>
+
+        {/* AL DIA */}
         <motion.button 
           whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
           onClick={() => setFiltroEspecial('al_dia')}
-          className={`p-6 rounded-[2rem] border-2 transition-all text-left ${filtroEspecial === 'al_dia' ? 'bg-emerald-600 text-white border-emerald-600 shadow-xl shadow-emerald-100' : 'bg-white text-gray-800 border-gray-100 shadow-sm hover:border-emerald-200'}`}
+          className={`p-5 rounded-3xl border-2 transition-all text-left ${filtroEspecial === 'al_dia' ? 'bg-emerald-600 text-white border-emerald-600 shadow-xl shadow-emerald-100' : 'bg-white text-gray-800 border-gray-100 shadow-sm hover:border-emerald-200'}`}
         >
-          <div className="flex justify-between items-center mb-4">
-            <div className={`p-3 rounded-2xl ${filtroEspecial === 'al_dia' ? 'bg-white/20' : 'bg-emerald-50 text-emerald-600'}`}>
-              <CheckCircle size={24} />
-            </div>
-            <span className={`text-[10px] font-black uppercase tracking-widest ${filtroEspecial === 'al_dia' ? 'text-white/60' : 'text-gray-400'}`}>Al Día</span>
+          <p className={`text-[9px] font-black uppercase tracking-widest mb-3 ${filtroEspecial === 'al_dia' ? 'text-white/60' : 'text-gray-400'}`}>Al Día</p>
+          <p className="text-xl font-black">{alDiaCount}</p>
+          <div className="mt-2 flex items-center gap-2">
+             <div className={`p-1.5 rounded-lg ${filtroEspecial === 'al_dia' ? 'bg-white/20' : 'bg-emerald-50 text-emerald-600'}`}>
+                <CheckCircle size={14} />
+             </div>
+             <span className="text-[9px] font-bold opacity-60">Sin deudas</span>
           </div>
-          <p className="text-2xl font-black">{alDiaCount} Negocios</p>
-          <p className={`text-[10px] font-bold mt-1 ${filtroEspecial === 'al_dia' ? 'text-white/60' : 'text-gray-400'}`}>Sin deudas pendientes</p>
         </motion.button>
 
+        {/* MORA */}
         <motion.button 
           whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
           onClick={() => setFiltroEspecial('deudores')}
-          className={`p-6 rounded-[2rem] border-2 transition-all text-left ${filtroEspecial === 'deudores' ? 'bg-rose-600 text-white border-rose-600 shadow-xl shadow-rose-100' : 'bg-white text-gray-800 border-gray-100 shadow-sm hover:border-rose-200'}`}
+          className={`p-5 rounded-3xl border-2 transition-all text-left ${filtroEspecial === 'deudores' ? 'bg-rose-600 text-white border-rose-600 shadow-xl shadow-rose-100' : 'bg-white text-gray-800 border-gray-100 shadow-sm hover:border-rose-200'}`}
         >
-          <div className="flex justify-between items-center mb-4">
-            <div className={`p-3 rounded-2xl ${filtroEspecial === 'deudores' ? 'bg-white/20' : 'bg-rose-50 text-rose-600'}`}>
-              <AlertCircle size={24} />
-            </div>
-            <span className={`text-[10px] font-black uppercase tracking-widest ${filtroEspecial === 'deudores' ? 'text-white/60' : 'text-gray-400'}`}>Mora (+3 días)</span>
+          <p className={`text-[9px] font-black uppercase tracking-widest mb-3 ${filtroEspecial === 'deudores' ? 'text-white/60' : 'text-gray-400'}`}>En Mora</p>
+          <p className="text-xl font-black">{deudoresCount}</p>
+          <div className="mt-2 flex items-center gap-2">
+             <div className={`p-1.5 rounded-lg ${filtroEspecial === 'deudores' ? 'bg-white/20' : 'bg-rose-50 text-rose-600'}`}>
+                <AlertCircle size={14} />
+             </div>
+             <span className="text-[9px] font-bold opacity-60">+3 días deuda</span>
           </div>
-          <p className="text-2xl font-black">{deudoresCount} Negocios</p>
-          <p className={`text-[10px] font-bold mt-1 ${filtroEspecial === 'deudores' ? 'text-white/60' : 'text-gray-400'}`}>Deuda crítica detectada</p>
         </motion.button>
       </div>
 
@@ -462,7 +527,20 @@ const ModuloInformales = ({ admin }) => {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
         <AnimatePresence>
           {cargando ? (
-            <div className="col-span-full py-20 text-center text-gray-300 font-black animate-pulse">CARGANDO REGISTROS...</div>
+            <div className="col-span-full py-20 text-center space-y-4">
+              <Loader2 className="mx-auto text-orange-500 animate-spin" size={48} />
+              <div className="space-y-1">
+                <p className="text-gray-400 font-black uppercase tracking-[0.3em] text-xs">Cargando registros...</p>
+                {cargaLenta && (
+                  <motion.p 
+                    initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+                    className="text-orange-600 font-bold text-[10px] uppercase animate-pulse"
+                  >
+                    ⚠️ La base de datos está lenta, estamos haciendo un esfuerzo extra...
+                  </motion.p>
+                )}
+              </div>
+            </div>
           ) : negociosFiltrados.length === 0 ? (
             <div className="col-span-full py-20 text-center bg-white rounded-[3rem] border-2 border-dashed border-gray-100">
               <Store size={48} className="mx-auto text-gray-200 mb-4" />
