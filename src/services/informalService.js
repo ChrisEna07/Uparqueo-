@@ -8,28 +8,25 @@ import { registrarAuditoria } from './auditService';
 export const calcularDeudaDetallada = (negocio, tarifa = 5000) => {
   if (!negocio.activo) return { deudaTotal: 0, diasTotales: 0 };
 
-  const fechaInicio = new Date(negocio.fecha_inicio);
-  const hoy = new Date();
+  // Obtener fecha actual en Colombia (UTC-5)
+  const ahoraColombia = new Date(new Date().toLocaleString("en-US", {timeZone: "America/Bogota"}));
+  ahoraColombia.setHours(0,0,0,0);
+
+  // La fecha de inicio ya viene como YYYY-MM-DD desde la DB
+  const [year, month, day] = negocio.fecha_inicio.split('-').map(Number);
+  const inicioColombia = new Date(year, month - 1, day);
+  inicioColombia.setHours(0,0,0,0);
   
-  // Normalizar fechas a medianoche UTC para contar días exactos
-  const inicioUTC = Date.UTC(fechaInicio.getFullYear(), fechaInicio.getMonth(), fechaInicio.getDate());
-  const hoyUTC = Date.UTC(hoy.getFullYear(), hoy.getMonth(), hoy.getDate());
-  
-  const diffTime = hoyUTC - inicioUTC;
+  const diffTime = ahoraColombia - inicioColombia;
   const diasCalendario = Math.floor(diffTime / (1000 * 60 * 60 * 24));
   
-  // Días totales = Transcurridos + Ajustes manuales
   const diasTotales = (diasCalendario < 0 ? 0 : diasCalendario) + (negocio.dias_manuales || 0);
-  
-  // Usar la tarifa específica del negocio si existe, de lo contrario usar la global
   const tarifaAplicar = negocio.valor_diario || tarifa;
-  
-  // Cálculo final restando lo que ya ha pagado (abonos)
   const deudaTotal = (diasTotales * tarifaAplicar) - (negocio.abonos || 0);
 
   return {
     diasTotales,
-    deudaTotal
+    deudaTotal: deudaTotal > 0 ? deudaTotal : 0
   };
 };
 
@@ -240,7 +237,7 @@ export const registrarNegocio = async (datos, adminUsername = 'sistema') => {
         abonos: 0,
         dias_manuales: 0,
         registrado_por: adminUsername,
-        fecha_inicio: new Date().toISOString().split('T')[0]
+        fecha_inicio: new Date().toLocaleDateString("en-CA", {timeZone: "America/Bogota"}) // Formato YYYY-MM-DD
       }])
       .select();
       
