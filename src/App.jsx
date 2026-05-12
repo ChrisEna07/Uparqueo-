@@ -170,6 +170,21 @@ function App() {
             username: session.user.email.split('@')[0]
           };
           setAdmin(userData);
+          
+          const savedSessionStr = localStorage.getItem('uparqueo_session');
+          if (savedSessionStr) {
+            try {
+              const savedSession = JSON.parse(savedSessionStr);
+              if (savedSession.view === 'app' && savedSession.module) {
+                setSelectedModule(savedSession.module);
+                setTab(savedSession.activeTab || savedSession.module);
+                setAppView('app');
+                return;
+              }
+            } catch (e) {
+              console.error('Error parsing session', e);
+            }
+          }
           setAppView('home');
         }
       } else {
@@ -284,7 +299,11 @@ function App() {
       // Resetear taps después de 2 segundos de inactividad
       setTimeout(() => setDevTaps(0), 2000);
       
-      if (appView === 'app') setAppView('home');
+      if (appView === 'app') {
+        setAppView('home');
+        const session = JSON.parse(localStorage.getItem('uparqueo_session') || '{}');
+        localStorage.setItem('uparqueo_session', JSON.stringify({ ...session, view: 'home' }));
+      }
     }
   };
 
@@ -348,11 +367,9 @@ function App() {
     setTab(tabId);
     setMenuAbierto(false);
     // Guardar cambio de pestaña en la sesión persistente
-    const savedSession = localStorage.getItem('uparqueo_session');
-    if (savedSession) {
-      const session = JSON.parse(savedSession);
-      localStorage.setItem('uparqueo_session', JSON.stringify({ ...session, activeTab: tabId }));
-    }
+    const savedSessionStr = localStorage.getItem('uparqueo_session');
+    const session = savedSessionStr ? JSON.parse(savedSessionStr) : {};
+    localStorage.setItem('uparqueo_session', JSON.stringify({ ...session, activeTab: tabId }));
   };
 
   const handleLogin = (adminData) => {
@@ -377,16 +394,14 @@ function App() {
     setTab(modulo);
     setAppView('app');
     // Actualizar sesión persistente
-    const savedSession = localStorage.getItem('uparqueo_session');
-    if (savedSession) {
-      const session = JSON.parse(savedSession);
-      localStorage.setItem('uparqueo_session', JSON.stringify({ 
-        ...session, 
-        view: 'app', 
-        module: modulo,
-        activeTab: modulo 
-      }));
-    }
+    const savedSessionStr = localStorage.getItem('uparqueo_session');
+    const session = savedSessionStr ? JSON.parse(savedSessionStr) : {};
+    localStorage.setItem('uparqueo_session', JSON.stringify({ 
+      ...session, 
+      view: 'app', 
+      module: modulo,
+      activeTab: modulo 
+    }));
   };
 
   const handleLogout = async () => {
@@ -518,7 +533,11 @@ function App() {
               )}
  
               <button 
-                onClick={() => setAppView('home')}
+                onClick={() => {
+                  setAppView('home');
+                  const session = JSON.parse(localStorage.getItem('uparqueo_session') || '{}');
+                  localStorage.setItem('uparqueo_session', JSON.stringify({ ...session, view: 'home' }));
+                }}
                 className="bg-white/10 hover:bg-white/20 backdrop-blur-md p-2.5 md:px-4 md:py-2.5 rounded-xl text-[10px] font-black uppercase tracking-[0.2em] border border-white/10 transition-all flex items-center gap-2 active:scale-95"
               >
                 <ArrowLeft size={18} /> <span className="hidden xs:block">Volver</span>
