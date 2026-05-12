@@ -18,7 +18,10 @@ const HomePanel = ({ admin, onSelectModule, onLogout }) => {
     const esEmpleado = admin.rol.startsWith('empleado') || admin.rol === 'empleado';
     
     if (esEmpleado) {
-      // Por petición, el empleado SOLO puede acceder al módulo de informales
+      if (admin.rol === 'empleado_ambos') return true;
+      if (admin.rol === 'empleado_parqueo') return modulo === 'parqueadero';
+      if (admin.rol === 'empleado_informales') return modulo === 'informales';
+      // Fallback a informales por defecto si solo es 'empleado'
       return modulo === 'informales';
     }
 

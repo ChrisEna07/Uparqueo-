@@ -16,7 +16,7 @@ import { Bell } from 'lucide-react';
 import DevTools from './components/DevTools';
 import Login from './components/Login';
 import HomePanel from './components/HomePanel';
-import { loginAdmin, updateAdmin } from './services/authService';
+import { onAuthStateChange, getPerfil, logout } from './services/authService';
 import { supabase } from './lib/supabase';
 import Swal from 'sweetalert2';
 import logo from '../assets/logo upar.png';
@@ -159,47 +159,26 @@ function App() {
     fetchDevKey();
 
     // RESTAURAR SESIÓN DESDE LOCALSTORAGE
-    const verificarSesion = async () => {
-      const savedSession = localStorage.getItem('uparqueo_session');
-      if (savedSession) {
-        try {
-          const { adminData, view, module, activeTab } = JSON.parse(savedSession);
-          
-          // Verificar contra la base de datos y OBTENER DATOS FRESCOS
-          if (adminData && adminData.id) {
-            const { data: freshAdminData, error } = await supabase
-              .from('admins')
-              .select('*')
-              .eq('id', adminData.id)
-              .maybeSingle();
-
-            if (error || !freshAdminData) {
-              // El usuario fue eliminado o no existe, forzar cierre de sesión
-              console.warn("Sesión inválida: El usuario ya no existe o hubo un error.");
-              localStorage.removeItem('uparqueo_session');
-              setAdmin(null);
-              setAppView('login');
-              return;
-            }
-            
-            // Usar los datos frescos de la DB, no los del localStorage antiguo
-            setAdmin(freshAdminData);
-          }
-          setAppView(view || 'home');
-          if (module) setSelectedModule(module);
-          if (activeTab) setTab(activeTab);
-          setPerfilForm({
-            nombre_completo: adminData?.nombre_completo || '',
-            foto_perfil: adminData?.foto_perfil || ''
-          });
-        } catch (e) {
-          console.error("Error restaurando sesión:", e);
-          localStorage.removeItem('uparqueo_session');
+    // SUSCRIBIRSE A CAMBIOS DE AUTENTICACIÓN (NUEVO SISTEMA)
+    const { data: { subscription } } = onAuthStateChange(async (event, session) => {
+      if (session) {
+        const { data: perfil } = await getPerfil(session.user.id);
+        if (perfil) {
+          const userData = {
+            ...session.user,
+            ...perfil,
+            username: session.user.email.split('@')[0]
+          };
+          setAdmin(userData);
+          setAppView('home');
         }
+      } else {
+        setAdmin(null);
+        setAppView('login');
       }
-    };
-    
-    verificarSesion();
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
 
   useEffect(() => {
@@ -329,9 +308,18 @@ function App() {
     const esEmpleado = admin?.rol?.startsWith('empleado') || admin?.rol === 'empleado';
     
     if (esEmpleado) {
-      // Pestañas permitidas para empleados según solicitud: Informales, Evidencias, Lista Negra
-      // Además de notificaciones y ajustes que son básicos
-      const permitidas = ['informales', 'gastos', 'evidencias', 'lista_negra', 'ajustes'];
+      // Pestañas base que todo empleado ve
+      const permitidas = ['evidencias', 'lista_negra', 'ajustes'];
+      
+      // Añadir el gestor principal según su subrol
+      if (admin.rol === 'empleado_parqueo' || admin.rol === 'empleado_ambos') {
+        permitidas.push('parqueadero');
+      }
+      if (admin.rol === 'empleado_informales' || admin.rol === 'empleado_ambos' || admin.rol === 'empleado') {
+        permitidas.push('informales');
+        permitidas.push('gastos'); // Permitimos gastos si tienen acceso a informales
+      }
+
       return permitidas.includes(t.id);
     }
 
@@ -368,19 +356,8 @@ function App() {
   };
 
   const handleLogin = (adminData) => {
-    if (!adminData) return;
-    setAdmin(adminData);
-    setPerfilForm({
-      nombre_completo: adminData.nombre_completo || '',
-      foto_perfil: adminData.foto_perfil || ''
-    });
+    // El estado se actualiza automáticamente por onAuthStateChange
     setAppView('home');
-    // Persistir sesión
-    localStorage.setItem('uparqueo_session', JSON.stringify({ 
-      adminData, 
-      view: 'home',
-      activeTab: tab 
-    }));
   };
 
   const handleUpdateProfile = async (e) => {
@@ -412,13 +389,13 @@ function App() {
     }
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    await logout();
     setAdmin(null);
     setSelectedModule(null);
     setAppView('login');
     setTab('parqueadero');
-    localStorage.clear(); // Limpieza total para evitar rastro de usuarios anteriores
-    window.location.reload(); // Recarga forzada para limpiar estados de memoria
+    localStorage.clear();
   };
 
   if (appView === 'login') {
@@ -633,7 +610,7 @@ function App() {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
               >
-                <ModuloReportes selectedModule={selectedModule} />
+                <ModuloReportes selectedModule={selectedModule} admin={admin} />
               </motion.div>
             )}
 

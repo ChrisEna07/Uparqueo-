@@ -8,6 +8,7 @@ export const getGastosPorFechas = async (inicio, fin) => {
       .select('*')
       .gte('created_at', inicio)
       .lte('created_at', fin)
+      .is('deleted_at', null)
       .order('created_at', { ascending: false });
 
     if (error) throw error;
@@ -23,6 +24,7 @@ export const getGastos = async () => {
     const { data, error } = await supabase
       .from('egresos')
       .select('*')
+      .is('deleted_at', null)
       .order('created_at', { ascending: false });
 
     if (error) throw error;

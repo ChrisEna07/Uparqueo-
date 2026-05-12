@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { TrendingDown, Plus, Edit2, Calendar, 
-  Tag, FileText, Loader2, DollarSign,
-  AlertCircle, X
+  AlertCircle, X, Lock
 } from 'lucide-react';
 import { getGastos, registrarGasto, actualizarGasto } from '../services/gastosService';
 import Swal from 'sweetalert2';
@@ -191,11 +190,15 @@ const ModuloGastos = ({ admin }) => {
                 <div className="md:hidden p-4 space-y-4">
                   {gastosDelDia.map((g) => (
                     <div key={g.id} className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm relative overflow-hidden group">
-                      <div className="absolute top-0 right-0 p-2">
-                        <button onClick={() => prepararEdicion(g)} className="p-2 text-blue-500 hover:bg-blue-50 rounded-lg">
-                          <Edit2 size={18} />
-                        </button>
-                      </div>
+                        {g.cierre_id ? (
+                          <div className="p-2 text-gray-300 bg-gray-50 rounded-lg" title="Transacción cerrada y bloqueada">
+                            <Lock size={18} />
+                          </div>
+                        ) : (
+                          <button onClick={() => prepararEdicion(g)} className="p-2 text-blue-500 hover:bg-blue-50 rounded-lg">
+                            <Edit2 size={18} />
+                          </button>
+                        )}
                       <div className="flex items-center gap-2 mb-3">
                         <span className="px-2 py-1 bg-rose-50 text-rose-600 text-[9px] font-black uppercase rounded-lg border border-rose-100">
                           {g.categoria}
@@ -235,12 +238,18 @@ const ModuloGastos = ({ admin }) => {
                             </span>
                           </td>
                           <td className="px-8 py-5 text-center w-24">
-                            <button 
-                              onClick={() => prepararEdicion(g)}
-                              className="p-2 text-gray-300 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all"
-                            >
-                              <Edit2 size={18} />
-                            </button>
+                            {g.cierre_id ? (
+                              <div className="flex justify-center text-gray-300" title="Registro cerrado">
+                                <Lock size={18} />
+                              </div>
+                            ) : (
+                              <button 
+                                onClick={() => prepararEdicion(g)}
+                                className="p-2 text-gray-300 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all"
+                              >
+                                <Edit2 size={18} />
+                              </button>
+                            )}
                           </td>
                         </tr>
                       ))}

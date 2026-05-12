@@ -16,7 +16,7 @@ import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
 import Swal from 'sweetalert2';
 
-const ModuloReportes = ({ selectedModule = 'parqueadero' }) => {
+const ModuloReportes = ({ selectedModule = 'parqueadero', admin }) => {
   const [cargando, setCargando] = useState(false);
   const [tipoReporte, setTipoReporte] = useState('diario'); // diario, semanal, mensual
   const [reporteData, setReporteData] = useState(null);
@@ -61,7 +61,7 @@ const ModuloReportes = ({ selectedModule = 'parqueadero' }) => {
   }, [tipoReporte, selectedModule, soloDesdeCierre, fechaConsulta]);
 
   const cargarUltimoCierre = async () => {
-    const res = await getUltimoCierre();
+    const res = await getUltimoCierre(selectedModule);
     if (res.success) setUltimoCierre(res.data);
   };
 
@@ -112,19 +112,15 @@ const ModuloReportes = ({ selectedModule = 'parqueadero' }) => {
         // Obtener gastos del mismo periodo
         const { data: gastos } = await getGastosPorFechas(inicio, fin);
         const sumGastos = (gastos || []).reduce((acc, g) => acc + Number(g.monto), 0);
-
-        // Obtener abonos informales del mismo periodo para balance total
-        const { data: abonos } = await getPagosInformalesPorFechas(inicio, fin);
-        const sumAbonos = (abonos || []).reduce((acc, a) => acc + Number(a.monto), 0);
         
-        setAbonosData(abonos || []);
+        setAbonosData([]); // Parqueadero no muestra abonos informales
         setReporteData({
           ...res,
           resumen: {
             ...res.resumen,
-            totalAbonos: sumAbonos,
+            totalAbonos: 0,
             totalGastos: sumGastos,
-            balanceNeto: (res.resumen.totalIngresos || 0) + sumAbonos - sumGastos
+            balanceNeto: (res.resumen.totalIngresos || 0) - sumGastos
           },
           gastos: gastos || []
         });
@@ -308,7 +304,7 @@ const ModuloReportes = ({ selectedModule = 'parqueadero' }) => {
         <div class="text-left space-y-2 text-sm">
           <p>Se guardará un registro del estado actual de la caja:</p>
           <ul class="list-disc ml-6 font-bold">
-            <li>Ingresos: $${((totalIngresos || 0) + (totalAbonos || totalRecaudado || 0)).toLocaleString()}</li>
+            <li>Ingresos Brutos: $${((totalIngresos || 0) + (totalRecaudado || 0)).toLocaleString()}</li>
             <li>Gastos: $${(totalGastos || 0).toLocaleString()}</li>
             <li>Neto a Entregar: $${(balanceNeto || 0).toLocaleString()}</li>
           </ul>
@@ -324,7 +320,7 @@ const ModuloReportes = ({ selectedModule = 'parqueadero' }) => {
 
     if (result.isConfirmed) {
       setCargando(true);
-      const res = await registrarCierreCaja(reporteData.resumen, 'admin'); // TODO: Pass real user
+      const res = await registrarCierreCaja(reporteData.resumen, admin?.username || 'sistema', selectedModule);
       if (res.success) {
         await cargarUltimoCierre();
         await Swal.fire('¡Caja Cerrada!', 'El registro de auditoría ha sido creado.', 'success');
@@ -504,15 +500,19 @@ const ModuloReportes = ({ selectedModule = 'parqueadero' }) => {
               <h3 className="text-blue-900 font-black text-sm uppercase tracking-widest mb-6 flex items-center gap-2">
                 <ShieldAlert size={18} /> Cierre de Caja Justificado (Hoy)
               </h3>
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                <div className="bg-white p-6 rounded-3xl shadow-sm border border-blue-50">
-                  <h4 className="text-[10px] font-black text-gray-400 uppercase mb-4 tracking-tighter">Ingresos Parqueadero</h4>
-                  <p className="text-2xl font-black text-blue-700">${(selectedModule === 'parqueadero' ? reporteData?.resumen?.totalIngresos : 0)?.toLocaleString()}</p>
-                </div>
-                <div className="bg-white p-6 rounded-3xl shadow-sm border border-blue-50">
-                  <h4 className="text-[10px] font-black text-gray-400 uppercase mb-4 tracking-tighter">Abonos Informales</h4>
-                  <p className="text-2xl font-black text-emerald-600">+${(reporteData?.resumen?.totalAbonos || (selectedModule === 'informales' ? reporteData?.resumen?.totalRecaudado : 0))?.toLocaleString()}</p>
-                </div>
+              <div className={`grid grid-cols-1 md:grid-cols-2 gap-6`}>
+                {selectedModule === 'parqueadero' ? (
+                  <div className="bg-white p-6 rounded-3xl shadow-sm border border-blue-50">
+                    <h4 className="text-[10px] font-black text-gray-400 uppercase mb-4 tracking-tighter">Ingresos Parqueadero</h4>
+                    <p className="text-2xl font-black text-blue-700">${(reporteData?.resumen?.totalIngresos || 0).toLocaleString()}</p>
+                  </div>
+                ) : (
+                  <div className="bg-white p-6 rounded-3xl shadow-sm border border-emerald-50">
+                    <h4 className="text-[10px] font-black text-gray-400 uppercase mb-4 tracking-tighter">Abonos Informales</h4>
+                    <p className="text-2xl font-black text-emerald-600">+${(reporteData?.resumen?.totalRecaudado || 0).toLocaleString()}</p>
+                  </div>
+                )}
+                
                 <div className="bg-white p-6 rounded-3xl shadow-sm border border-rose-50">
                   <h4 className="text-[10px] font-black text-gray-400 uppercase mb-4 tracking-tighter">Egresos Justificados</h4>
                   <p className="text-2xl font-black text-rose-600">-${(reporteData?.resumen?.totalGastos || 0).toLocaleString()}</p>

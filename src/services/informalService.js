@@ -131,35 +131,45 @@ export const getLimiteDiasInformal = async () => {
 
 
 /**
- * Registra un nuevo abono sumándolo al acumulado actual
+ * Registra un nuevo abono de forma atómica usando una función de base de datos (RPC)
+ * Esto evita condiciones de carrera y pérdida de datos financieros.
  */
 export const registrarAbono = async (id, abonoAnterior, nuevoAbono, adminUsername = 'sistema', nombreNegocio = '') => {
-  const sumaTotal = parseFloat(abonoAnterior || 0) + parseFloat(nuevoAbono);
-  
-  // 1. Actualizar el acumulado en el negocio
-  const { error: errorUpdate } = await supabase
-    .from('negocios_informales')
-    .update({ 
-      abonos: sumaTotal
-    })
-    .eq('id', id);
+  try {
+    // Usamos la función RPC que definimos en el script SQL para mayor seguridad
+    const { error } = await supabase.rpc('registrar_abono_atomico', {
+      p_negocio_id: id,
+      p_monto: parseFloat(nuevoAbono),
+      p_usuario: adminUsername
+    });
 
-  if (errorUpdate) throw errorUpdate;
+    if (error) throw error;
 
-  // 2. Registrar en el historial de abonos
-  const { error: errorHistorial } = await supabase
-    .from('historial_pagos_informales')
-    .insert([{
+    // La auditoría se mantiene para trazabilidad histórica
+    await registrarAuditoria('informales', 'ABONO', `Abono de $${parseFloat(nuevoAbono).toLocaleString()} al negocio ${nombreNegocio || `ID #${id.slice(0,5)}`}`, adminUsername);
+    
+    return { success: true };
+  } catch (error) {
+    console.error("Error en registrarAbono (Atómico):", error);
+    
+    // Fallback: Si la función RPC aún no está creada en la DB, usamos el método antiguo 
+    // para no detener la operación comercial (retrocompatibilidad temporal)
+    const sumaTotal = parseFloat(abonoAnterior || 0) + parseFloat(nuevoAbono);
+    const { error: errorUpdate } = await supabase
+      .from('negocios_informales')
+      .update({ abonos: sumaTotal })
+      .eq('id', id);
+
+    if (errorUpdate) throw errorUpdate;
+
+    await supabase.from('historial_pagos_informales').insert([{
       negocio_id: id,
       monto: parseFloat(nuevoAbono),
       registrado_por: adminUsername,
       fecha: new Date().toISOString()
     }]);
 
-  if (errorHistorial) {
-    console.error("Error al guardar historial de abono:", errorHistorial);
-  } else {
-    await registrarAuditoria('informales', 'ABONO', `Abono de $${parseFloat(nuevoAbono).toLocaleString()} al negocio ${nombreNegocio || `ID #${id.slice(0,5)}`}`, adminUsername);
+    return { success: true };
   }
 };
 
