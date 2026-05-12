@@ -56,16 +56,12 @@ const Login = ({ onLoginSuccess }) => {
           <div className="space-y-2">
             <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest ml-1">Usuario o Correo</label>
             <div className="relative group">
-              <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 group-focus-within:text-blue-500 transition-colors z-10 pointer-events-none">
-                <User size={20} />
-              </div>
               <input 
                 type="text" 
                 value={identificador}
                 onChange={(e) => setIdentificador(e.target.value)}
                 placeholder="Ej: admin2"
-                style={{ WebkitBoxShadow: '0 0 0 30px #0f172a inset', WebkitTextFillColor: 'white' }}
-                className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 pl-14 pr-4 text-white font-bold outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-all relative z-0"
+                className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-4 text-white font-bold outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-all relative z-0 [color-scheme:dark] autofill:bg-slate-900 autofill:text-white"
               />
             </div>
           </div>
@@ -73,16 +69,12 @@ const Login = ({ onLoginSuccess }) => {
           <div className="space-y-2">
             <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest ml-1">Contraseña</label>
             <div className="relative group">
-              <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 group-focus-within:text-blue-500 transition-colors z-10 pointer-events-none">
-                <Lock size={20} />
-              </div>
               <input 
                 type={showPassword ? "text" : "password"} 
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
-                style={{ WebkitBoxShadow: '0 0 0 30px #0f172a inset', WebkitTextFillColor: 'white' }}
-                className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 pl-14 pr-14 text-white font-bold outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-all relative z-0"
+                className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 pl-4 pr-14 text-white font-bold outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-all relative z-0 [color-scheme:dark] autofill:bg-slate-900 autofill:text-white"
               />
               <button 
                 type="button"
