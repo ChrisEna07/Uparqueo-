@@ -29,7 +29,13 @@ const ModuloReportes = ({ selectedModule = 'parqueadero' }) => {
   const [abonosData, setAbonosData] = useState([]);
   const [ultimoCierre, setUltimoCierre] = useState(null);
   const [soloDesdeCierre, setSoloDesdeCierre] = useState(false);
-  const [fechaConsulta, setFechaConsulta] = useState(new Date().toISOString().split('T')[0]);
+  // Inicializar con la fecha local correcta (no UTC) para evitar saltos de día en la noche
+  const getFechaLocal = () => {
+    const d = new Date();
+    const offset = d.getTimezoneOffset() * 60000;
+    return new Date(d.getTime() - offset).toISOString().split('T')[0];
+  };
+  const [fechaConsulta, setFechaConsulta] = useState(getFechaLocal());
 
   // Helper para filtro de fechas en interfaz
   const fechasFiltro = (() => {
@@ -774,6 +780,8 @@ const ModuloReportes = ({ selectedModule = 'parqueadero' }) => {
                           log.accion === 'ABONO' ? 'bg-emerald-50 text-emerald-600 border-emerald-200' :
                           log.accion === 'EXTENSION_DIAS' ? 'bg-orange-50 text-orange-600 border-orange-200' :
                           log.accion === 'ESTADO' ? 'bg-rose-50 text-rose-600 border-rose-200' :
+                          log.accion === 'EGRESO' ? 'bg-red-50 text-red-600 border-red-200' :
+                          log.accion === 'EDICION' ? 'bg-blue-50 text-blue-600 border-blue-200' :
                           'bg-gray-50 text-gray-600 border-gray-200'
                         }`}>
                           {log.accion}
