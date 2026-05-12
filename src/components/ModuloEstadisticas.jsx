@@ -14,17 +14,16 @@ const ModuloEstadisticas = () => {
   const [deudoresParqueo, setDeudoresParqueo] = useState([]);
   const [informalesAlDia, setInformalesAlDia] = useState([]);
   
-  // Modal de detalles
-  const [modalAbierto, setModalAbierto] = useState(false);
-  const [modalTipo, setModalTipo] = useState(''); // 'dia', 'semana', 'mes'
   const [modalDatos, setModalDatos] = useState([]);
+  
+  const [fechaConsulta, setFechaConsulta] = useState(new Date().toISOString().split('T')[0]);
 
   const cargarDatos = async () => {
     setCargando(true);
     
     // 1. Fechas de referencia
-    const hoy = new Date();
-    hoy.setHours(0, 0, 0, 0);
+    const hoy = new Date(fechaConsulta + 'T00:00:00');
+    const hoyFin = new Date(fechaConsulta + 'T23:59:59');
 
     const inicioSemana = new Date(hoy);
     inicioSemana.setDate(hoy.getDate() - hoy.getDay());
@@ -47,10 +46,10 @@ const ModuloEstadisticas = () => {
       parqueos.forEach(reg => {
         const fechaSalida = new Date(reg.salida);
         const monto = reg.total_pagar || 0;
-        listMes.push(reg);
-        sumMes += monto;
+        
+        if (fechaSalida >= inicioMes) { listMes.push(reg); sumMes += monto; }
         if (fechaSalida >= inicioSemana) { listSemana.push(reg); sumSemana += monto; }
-        if (fechaSalida >= hoy) { listDia.push(reg); sumDia += monto; }
+        if (fechaSalida >= hoy && fechaSalida <= hoyFin) { listDia.push(reg); sumDia += monto; }
       });
     }
 
@@ -65,9 +64,40 @@ const ModuloEstadisticas = () => {
       egresos.forEach(g => {
         const fecha = new Date(g.created_at);
         const monto = Number(g.monto) || 0;
-        gMes += monto;
+        if (fecha >= inicioMes) gMes += monto;
         if (fecha >= inicioSemana) gSemana += monto;
-        if (fecha >= hoy) gDia += monto;
+        if (fecha >= hoy && fecha <= hoyFin) gDia += monto;
+      });
+    }
+
+    // 3.5. Cargar Abonos de Negocios Informales
+    const { data: abonosInf, error: errAbonos } = await supabase
+      .from('historial_pagos_informales')
+      .select(`
+        *,
+        negocios_informales (
+          nombre_negocio
+        )
+      `)
+      .gte('fecha', inicioMes.toISOString());
+
+    if (!errAbonos && abonosInf) {
+      abonosInf.forEach(a => {
+        const fecha = new Date(a.fecha);
+        const monto = Number(a.monto) || 0;
+        
+        const formattedReg = {
+          id: a.id,
+          placa: `PAGO: ${a.negocios_informales?.nombre_negocio || 'NEGOCIO'}`,
+          cliente_nombre: 'NEGOCIO INFORMAL',
+          total_pagar: monto,
+          salida: a.fecha,
+          esAbono: true
+        };
+
+        if (fecha >= inicioMes) { sumMes += monto; listMes.push(formattedReg); }
+        if (fecha >= inicioSemana) { sumSemana += monto; listSemana.push(formattedReg); }
+        if (fecha >= hoy && fecha <= hoyFin) { sumDia += monto; listDia.push(formattedReg); }
       });
     }
 
@@ -108,7 +138,7 @@ const ModuloEstadisticas = () => {
 
   useEffect(() => {
     cargarDatos();
-  }, []);
+  }, [fechaConsulta]);
 
   const abrirModal = (tipo) => {
     setModalTipo(tipo);
@@ -135,9 +165,20 @@ const ModuloEstadisticas = () => {
         <div className="absolute top-0 right-0 p-8 opacity-10">
           <TrendingUp size={120} />
         </div>
-        <div className="relative z-10">
-          <h2 className="text-3xl font-black mb-2">Panel de Estadísticas</h2>
-          <p className="text-green-100">Control financiero y seguimiento de pagos en tiempo real.</p>
+        <div className="relative z-10 flex flex-col md:flex-row justify-between items-center gap-6">
+          <div>
+            <h2 className="text-3xl font-black mb-2">Panel de Estadísticas</h2>
+            <p className="text-green-100">Control financiero y seguimiento de pagos en tiempo real.</p>
+          </div>
+          <div className="bg-white/10 p-2 rounded-2xl border border-white/20 flex items-center gap-3">
+             <CalendarIcon size={20} className="text-green-300 ml-2" />
+             <input 
+               type="date" 
+               value={fechaConsulta}
+               onChange={(e) => setFechaConsulta(e.target.value)}
+               className="bg-transparent border-none outline-none font-bold text-white text-sm cursor-pointer [color-scheme:dark]"
+             />
+          </div>
         </div>
       </div>
 

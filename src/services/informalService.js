@@ -183,6 +183,32 @@ export const getHistorialAbonos = async (negocioId) => {
 };
 
 /**
+ * Obtiene los pagos (abonos) realizados en un rango de fechas
+ */
+export const getPagosInformalesPorFechas = async (inicio, fin) => {
+  try {
+    const { data, error } = await supabase
+      .from('historial_pagos_informales')
+      .select(`
+        *,
+        negocios_informales (
+          nombre_negocio,
+          nombre_cliente
+        )
+      `)
+      .gte('fecha', inicio)
+      .lte('fecha', fin)
+      .order('fecha', { ascending: false });
+
+    if (error) throw error;
+    return { success: true, data: data || [] };
+  } catch (error) {
+    console.error("Error en getPagosInformalesPorFechas:", error);
+    return { success: false, data: [] };
+  }
+};
+
+/**
  * Agrega días adicionales manualmente
  */
 export const agregarDiasManuales = async (id, diasActuales, diasNuevos = 1, adminUsername = 'sistema', nombreNegocio = '') => {

@@ -65,6 +65,7 @@ const ModuloInformales = ({ admin }) => {
   };
 
   const [gastosHoy, setGastosHoy] = useState(0);
+  const [recaudadoHoy, setRecaudadoHoy] = useState(0);
 
   const cargarNegocios = async () => {
     setCargando(true);
@@ -79,16 +80,31 @@ const ModuloInformales = ({ admin }) => {
       const res = await getNegociosInformales();
       if (res.success) setNegocios(res.data);
 
-      // Cargar gastos de hoy para el balance neto
       const hoy = new Date();
       hoy.setHours(0,0,0,0);
+      const hoyFin = new Date();
+      hoyFin.setHours(23,59,59,999);
+
+      // Cargar gastos de hoy para el balance neto
       const { data: egr } = await supabase
         .from('egresos')
         .select('monto')
-        .gte('created_at', hoy.toISOString());
+        .gte('created_at', hoy.toISOString())
+        .lte('created_at', hoyFin.toISOString());
       
       const sumGastos = egr?.reduce((acc, g) => acc + Number(g.monto), 0) || 0;
       setGastosHoy(sumGastos);
+
+      // Cargar abonos de hoy específicamente
+      const { data: abonos } = await supabase
+        .from('historial_pagos_informales')
+        .select('monto')
+        .gte('fecha', hoy.toISOString())
+        .lte('fecha', hoyFin.toISOString());
+      
+      const sumAbonos = abonos?.reduce((acc, a) => acc + Number(a.monto), 0) || 0;
+      setRecaudadoHoy(sumAbonos);
+
     } catch (err) {
       console.error("Error cargando:", err);
     } finally {
@@ -393,13 +409,13 @@ const ModuloInformales = ({ admin }) => {
           onClick={() => setFiltroEspecial('todos')}
           className={`p-5 rounded-3xl border-2 transition-all text-left ${filtroEspecial === 'todos' ? 'bg-orange-600 text-white border-orange-600 shadow-xl shadow-orange-100' : 'bg-white text-gray-800 border-gray-100 shadow-sm hover:border-orange-200'}`}
         >
-          <p className={`text-[9px] font-black uppercase tracking-widest mb-3 ${filtroEspecial === 'todos' ? 'text-white/60' : 'text-gray-400'}`}>Recaudado Neto</p>
-          <p className="text-xl font-black">${(negocios.reduce((sum, n) => sum + (n.abonos_hoy || 0), 0) - gastosHoy).toLocaleString()}</p>
+          <p className={`text-[9px] font-black uppercase tracking-widest mb-3 ${filtroEspecial === 'todos' ? 'text-white/60' : 'text-gray-400'}`}>Balance Neto Hoy</p>
+          <p className="text-xl font-black">${(recaudadoHoy - gastosHoy).toLocaleString()}</p>
           <div className="mt-2 flex items-center gap-2">
              <div className={`p-1.5 rounded-lg ${filtroEspecial === 'todos' ? 'bg-white/20' : 'bg-orange-50 text-orange-600'}`}>
                 <TrendingUp size={14} />
              </div>
-             <span className="text-[9px] font-bold opacity-60">Balance Hoy</span>
+             <span className="text-[9px] font-bold opacity-60">Recaudado: ${recaudadoHoy.toLocaleString()}</span>
           </div>
         </motion.button>
 

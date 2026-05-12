@@ -7,9 +7,10 @@ import {
   Search, ShieldAlert
 } from 'lucide-react';
 import { getReportePorFechas } from '../services/parqueoService';
-import { getReporteInformal, getHistorialAbonos } from '../services/informalService';
+import { getReporteInformal, getHistorialAbonos, getPagosInformalesPorFechas } from '../services/informalService';
 import { getAuditoria } from '../services/auditService';
 import { getGastosPorFechas } from '../services/gastosService';
+import { getUltimoCierre, registrarCierreCaja } from '../services/cierreService';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
@@ -25,28 +26,38 @@ const ModuloReportes = ({ selectedModule = 'parqueadero' }) => {
   const [auditoriaData, setAuditoriaData] = useState([]);
   const [busquedaAuditoria, setBusquedaAuditoria] = useState('');
   const [pestañaSecundaria, setPestañaSecundaria] = useState('general');
+  const [abonosData, setAbonosData] = useState([]);
+  const [ultimoCierre, setUltimoCierre] = useState(null);
+  const [soloDesdeCierre, setSoloDesdeCierre] = useState(false);
+  const [fechaConsulta, setFechaConsulta] = useState(new Date().toISOString().split('T')[0]);
 
   // Helper para filtro de fechas en interfaz
   const fechasFiltro = (() => {
-    const hoy = new Date();
+    const seleccionada = new Date(fechaConsulta + 'T12:00:00');
     if (tipoReporte === 'diario') {
-      const hoyStr = hoy.toISOString().split('T')[0];
-      return { inicio: hoyStr, fin: hoyStr };
+      const fStr = seleccionada.toISOString().split('T')[0];
+      return { inicio: fStr, fin: fStr };
     } else if (tipoReporte === 'semanal') {
-      const haceUnaSemana = new Date(hoy);
-      haceUnaSemana.setDate(hoy.getDate() - 7);
-      return { inicio: haceUnaSemana.toISOString().split('T')[0], fin: hoy.toISOString().split('T')[0] };
+      const haceUnaSemana = new Date(seleccionada);
+      haceUnaSemana.setDate(seleccionada.getDate() - 7);
+      return { inicio: haceUnaSemana.toISOString().split('T')[0], fin: seleccionada.toISOString().split('T')[0] };
     } else {
-      const haceUnMes = new Date(hoy);
-      haceUnMes.setMonth(hoy.getMonth() - 1);
-      return { inicio: haceUnMes.toISOString().split('T')[0], fin: hoy.toISOString().split('T')[0] };
+      const haceUnMes = new Date(seleccionada);
+      haceUnMes.setMonth(seleccionada.getMonth() - 1);
+      return { inicio: haceUnMes.toISOString().split('T')[0], fin: seleccionada.toISOString().split('T')[0] };
     }
   })();
 
   useEffect(() => {
     generarReporte(tipoReporte);
     cargarAuditoria();
-  }, [tipoReporte, selectedModule]);
+    cargarUltimoCierre();
+  }, [tipoReporte, selectedModule, soloDesdeCierre, fechaConsulta]);
+
+  const cargarUltimoCierre = async () => {
+    const res = await getUltimoCierre();
+    if (res.success) setUltimoCierre(res.data);
+  };
 
   const cargarAuditoria = async () => {
     setCargando(true);
@@ -65,23 +76,29 @@ const ModuloReportes = ({ selectedModule = 'parqueadero' }) => {
   const generarReporte = async (tipo) => {
     setCargando(true);
     try {
+      const hoy = new Date(fechaConsulta + 'T00:00:00');
+      const hoyFin = new Date(fechaConsulta + 'T23:59:59');
+      let inicio, fin;
+
       if (selectedModule === 'parqueadero') {
-        const hoy = new Date();
-        let inicio, fin;
 
         if (tipo === 'diario') {
-          inicio = new Date(hoy.setHours(0, 0, 0, 0)).toISOString();
-          fin = new Date(hoy.setHours(23, 59, 59, 999)).toISOString();
+          if (soloDesdeCierre && ultimoCierre) {
+            inicio = ultimoCierre.created_at;
+          } else {
+            inicio = hoy.toISOString();
+          }
+          fin = hoyFin.toISOString();
         } else if (tipo === 'semanal') {
           const haceUnaSemana = new Date(hoy);
           haceUnaSemana.setDate(hoy.getDate() - 7);
           inicio = haceUnaSemana.toISOString();
-          fin = new Date().toISOString();
+          fin = hoyFin.toISOString();
         } else if (tipo === 'mensual') {
           const haceUnMes = new Date(hoy);
           haceUnMes.setMonth(hoy.getMonth() - 1);
           inicio = haceUnMes.toISOString();
-          fin = new Date().toISOString();
+          fin = hoyFin.toISOString();
         }
 
         const res = await getReportePorFechas(inicio, fin);
@@ -89,35 +106,62 @@ const ModuloReportes = ({ selectedModule = 'parqueadero' }) => {
         // Obtener gastos del mismo periodo
         const { data: gastos } = await getGastosPorFechas(inicio, fin);
         const sumGastos = (gastos || []).reduce((acc, g) => acc + Number(g.monto), 0);
+
+        // Obtener abonos informales del mismo periodo para balance total
+        const { data: abonos } = await getPagosInformalesPorFechas(inicio, fin);
+        const sumAbonos = (abonos || []).reduce((acc, a) => acc + Number(a.monto), 0);
         
+        setAbonosData(abonos || []);
         setReporteData({
           ...res,
           resumen: {
             ...res.resumen,
+            totalAbonos: sumAbonos,
             totalGastos: sumGastos,
-            balanceNeto: (res.resumen.totalIngresos || 0) - sumGastos
+            balanceNeto: (res.resumen.totalIngresos || 0) + sumAbonos - sumGastos
           },
           gastos: gastos || []
         });
       } else {
         // Reporte de Informales
-        const res = await getReporteInformal();
+        let inicio, fin;
+        if (soloDesdeCierre && ultimoCierre) {
+          inicio = ultimoCierre.created_at;
+        } else {
+          inicio = hoy.toISOString();
+        }
+        fin = hoyFin.toISOString();
         
-        // Para informales, el "balance hoy" también debe restar gastos de hoy
-        const hoy = new Date();
-        const inicio = new Date(hoy.setHours(0,0,0,0)).toISOString();
-        const fin = new Date(hoy.setHours(23,59,59,999)).toISOString();
-        const { data: gastosHoy } = await getGastosPorFechas(inicio, fin);
-        const sumGastos = (gastosHoy || []).reduce((acc, g) => acc + Number(g.monto), 0);
+        const { data: abonosRango } = await getPagosInformalesPorFechas(inicio, fin);
+        const { data: gastosRango } = await getGastosPorFechas(inicio, fin);
+        
+        const sumGastos = (gastosRango || []).reduce((acc, g) => acc + Number(g.monto), 0);
+        const sumAbonos = (abonosRango || []).reduce((acc, a) => acc + Number(a.monto), 0);
+
+        setAbonosData(abonosRango || []);
+        
+        // Formatear la data para que sea compatible con las tablas de reporte
+        const dataProcesada = (abonosRango || []).map(a => ({
+          id: a.id,
+          nombre_negocio: a.negocios_informales?.nombre_negocio || 'NEGOCIO',
+          nombre_cliente: a.negocios_informales?.nombre_cliente || 'N/A',
+          abonos: a.monto, // Solo el abono de este registro/rango
+          activo: true,
+          created_at: a.fecha,
+          registrado_por: a.registrado_por
+        }));
 
         setReporteData({
-          ...res,
+          success: true,
+          data: dataProcesada,
           resumen: {
-            ...res.resumen,
+            totalRecaudado: sumAbonos,
+            totalAbonos: sumAbonos,
             totalGastos: sumGastos,
-            balanceNeto: (res.resumen.totalRecaudado || 0) - sumGastos
+            balanceNeto: sumAbonos - sumGastos,
+            totalNegocios: [...new Set(dataProcesada.map(d => d.nombre_negocio))].length
           },
-          gastos: gastosHoy || []
+          gastos: gastosRango || []
         });
       }
     } catch (error) {
@@ -210,7 +254,7 @@ const ModuloReportes = ({ selectedModule = 'parqueadero' }) => {
           reg.nombre_cliente || '---',
           reg.celular || '---',
           `$${(reg.abonos || 0).toLocaleString()}`,
-          (reg.activo ? 'ACTIVO' : 'INACTIVO')
+          reg.activo ? 'ACTIVO' : 'INACTIVO'
         ];
       }
     });
@@ -245,6 +289,45 @@ const ModuloReportes = ({ selectedModule = 'parqueadero' }) => {
     }
 
     doc.save(`reporte_final_${tipoReporte}_${Date.now()}.pdf`);
+  };
+
+  const handleCerrarCaja = async () => {
+    if (!reporteData) return;
+
+    const { balanceNeto, totalIngresos, totalAbonos, totalGastos, totalRecaudado } = reporteData.resumen;
+    
+    const result = await Swal.fire({
+      title: '¿Cerrar Caja Actual?',
+      html: `
+        <div class="text-left space-y-2 text-sm">
+          <p>Se guardará un registro del estado actual de la caja:</p>
+          <ul class="list-disc ml-6 font-bold">
+            <li>Ingresos: $${((totalIngresos || 0) + (totalAbonos || totalRecaudado || 0)).toLocaleString()}</li>
+            <li>Gastos: $${(totalGastos || 0).toLocaleString()}</li>
+            <li>Neto a Entregar: $${(balanceNeto || 0).toLocaleString()}</li>
+          </ul>
+          <p class="mt-4 text-red-600 font-black uppercase text-[10px]">Al cerrar, el reporte iniciará desde este momento si activas el filtro.</p>
+        </div>
+      `,
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonText: 'Sí, Cerrar Caja',
+      confirmButtonColor: '#10B981',
+      cancelButtonText: 'Cancelar'
+    });
+
+    if (result.isConfirmed) {
+      setCargando(true);
+      const res = await registrarCierreCaja(reporteData.resumen, 'admin'); // TODO: Pass real user
+      if (res.success) {
+        await cargarUltimoCierre();
+        await Swal.fire('¡Caja Cerrada!', 'El registro de auditoría ha sido creado.', 'success');
+        setSoloDesdeCierre(true);
+      } else {
+        Swal.fire('Error', res.error, 'error');
+      }
+      setCargando(false);
+    }
   };
 
   const exportarExcel = () => {
@@ -294,23 +377,38 @@ const ModuloReportes = ({ selectedModule = 'parqueadero' }) => {
               </h2>
               <p className="text-blue-100 mt-1 opacity-80 text-sm">{selectedModule === 'parqueadero' ? 'Gestión de Parqueo' : 'Gestión de Informales'}</p>
             </div>
-            {selectedModule === 'parqueadero' && (
-              <div className="flex bg-white/10 backdrop-blur-md p-1 rounded-2xl border border-white/20 overflow-x-auto scrollbar-hide">
-                {['diario', 'semanal', 'mensual'].map(t => (
-                  <button
-                    key={t}
-                    onClick={() => setTipoReporte(t)}
-                    className={`px-4 md:px-6 py-2 rounded-xl text-[10px] md:text-sm font-bold transition-all whitespace-nowrap ${
-                      tipoReporte === t 
-                      ? 'bg-white text-blue-900 shadow-lg' 
-                      : 'text-white hover:bg-white/10'
-                    }`}
-                  >
-                    {t.toUpperCase()}
-                  </button>
-                ))}
+              <div className="flex flex-col sm:flex-row w-full md:w-auto gap-3">
+                <div className="flex bg-white/10 backdrop-blur-md p-1 rounded-2xl border border-white/20 items-center">
+                   <Calendar size={16} className="text-white ml-3 mr-2" />
+                   <input 
+                     type="date" 
+                     value={fechaConsulta}
+                     onChange={(e) => setFechaConsulta(e.target.value)}
+                     className="bg-transparent border-none outline-none font-bold text-white text-xs cursor-pointer [color-scheme:dark] pr-4"
+                   />
+                </div>
+                <div className="flex bg-white/10 backdrop-blur-md p-1 rounded-2xl border border-white/20 overflow-x-auto scrollbar-hide">
+                  {['diario', 'semanal', 'mensual'].map(t => (
+                    <button
+                      key={t}
+                      onClick={() => setTipoReporte(t)}
+                      className={`px-4 md:px-6 py-2 rounded-xl text-[10px] md:text-sm font-bold transition-all whitespace-nowrap ${
+                        tipoReporte === t 
+                        ? 'bg-white text-blue-900 shadow-lg' 
+                        : 'text-white hover:bg-white/10'
+                      }`}
+                    >
+                      {t.toUpperCase()}
+                    </button>
+                  ))}
+                </div>
+                <button 
+                  onClick={handleCerrarCaja}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest flex items-center justify-center gap-2 shadow-lg transition-all active:scale-95 w-full sm:w-auto"
+                >
+                  <ShieldAlert size={16} /> Cerrar Caja
+                </button>
               </div>
-            )}
           </div>
         </div>
 
@@ -370,7 +468,7 @@ const ModuloReportes = ({ selectedModule = 'parqueadero' }) => {
               <p className="text-2xl font-black text-white mt-2">
                 ${(reporteData?.resumen?.balanceNeto || 0).toLocaleString()}
               </p>
-              <span className="text-[9px] font-bold text-white bg-white/20 px-2 py-1 rounded-full mt-3 inline-block">Utilidad Real</span>
+              <span className="text-[9px] font-bold text-white bg-white/20 px-2 py-1 rounded-full mt-3 inline-block">Cierre de Caja Real</span>
             </div>
 
             {/* EXPORTAR */}
@@ -394,13 +492,59 @@ const ModuloReportes = ({ selectedModule = 'parqueadero' }) => {
             </div>
           </div>
 
+          {/* DESGLOSE DIARIO JUSTIFICADO (Solo para reporte diario) */}
+          {tipoReporte === 'diario' && (
+            <div className="mb-8 bg-blue-50/50 p-6 rounded-[2.5rem] border-2 border-blue-100/50">
+              <h3 className="text-blue-900 font-black text-sm uppercase tracking-widest mb-6 flex items-center gap-2">
+                <ShieldAlert size={18} /> Cierre de Caja Justificado (Hoy)
+              </h3>
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div className="bg-white p-6 rounded-3xl shadow-sm border border-blue-50">
+                  <h4 className="text-[10px] font-black text-gray-400 uppercase mb-4 tracking-tighter">Ingresos Parqueadero</h4>
+                  <p className="text-2xl font-black text-blue-700">${(selectedModule === 'parqueadero' ? reporteData?.resumen?.totalIngresos : 0)?.toLocaleString()}</p>
+                </div>
+                <div className="bg-white p-6 rounded-3xl shadow-sm border border-blue-50">
+                  <h4 className="text-[10px] font-black text-gray-400 uppercase mb-4 tracking-tighter">Abonos Informales</h4>
+                  <p className="text-2xl font-black text-emerald-600">+${(reporteData?.resumen?.totalAbonos || (selectedModule === 'informales' ? reporteData?.resumen?.totalRecaudado : 0))?.toLocaleString()}</p>
+                </div>
+                <div className="bg-white p-6 rounded-3xl shadow-sm border border-rose-50">
+                  <h4 className="text-[10px] font-black text-gray-400 uppercase mb-4 tracking-tighter">Egresos Justificados</h4>
+                  <p className="text-2xl font-black text-rose-600">-${(reporteData?.resumen?.totalGastos || 0).toLocaleString()}</p>
+                </div>
+              </div>
+
+              {/* Lista de Abonos del día si es parqueadero para ver el desglose solicitado */}
+              {selectedModule === 'parqueadero' && abonosData.length > 0 && (
+                <div className="mt-6 bg-white/60 rounded-2xl p-4">
+                  <p className="text-[9px] font-black text-gray-500 uppercase mb-3">Detalle de Abonos Informales Recibidos:</p>
+                  <div className="space-y-2">
+                    {abonosData.map((a, idx) => (
+                      <div key={idx} className="flex justify-between items-center text-xs">
+                        <span className="font-bold text-gray-700">{a.negocios_informales?.nombre_negocio || 'Negocio'}</span>
+                        <span className="font-black text-emerald-600">${a.monto.toLocaleString()}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Tabla Detallada */}
           <div className="bg-gray-50 rounded-2xl border border-gray-100 overflow-hidden">
             <div className="p-6 border-b border-gray-200 bg-white flex justify-between items-center">
               <h3 className="font-bold text-gray-800 flex items-center gap-2">
                 <Calendar size={18} className="text-blue-600" />
-                Historial Detallado
+                Historial Detallado {soloDesdeCierre ? '(Desde el cierre)' : ''}
               </h3>
+              {tipoReporte === 'diario' && ultimoCierre && (
+                <button 
+                  onClick={() => setSoloDesdeCierre(!soloDesdeCierre)}
+                  className={`px-3 py-2 rounded-xl text-[9px] md:text-[10px] font-black uppercase tracking-widest transition-all ${soloDesdeCierre ? 'bg-orange-100 text-orange-600 border border-orange-200' : 'bg-gray-100 text-gray-400 border border-gray-200 hover:bg-gray-200'}`}
+                >
+                  {soloDesdeCierre ? 'Ver todo' : 'Ver desde cierre'}
+                </button>
+              )}
             </div>
             
             {cargando ? (

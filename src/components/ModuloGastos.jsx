@@ -30,11 +30,39 @@ const ModuloGastos = ({ admin }) => {
     cargarGastos();
   }, []);
 
+  const [stats, setStats] = useState({ hoy: 0, semana: 0, mes: 0, total: 0 });
+
   const cargarGastos = async () => {
     setCargando(true);
     const res = await getGastos();
-    if (res.success) setGastos(res.data);
+    if (res.success) {
+      setGastos(res.data);
+      calcularStats(res.data);
+    }
     setCargando(false);
+  };
+
+  const calcularStats = (data) => {
+    const hoy = new Date();
+    hoy.setHours(0,0,0,0);
+    
+    const inicioSemana = new Date(hoy);
+    inicioSemana.setDate(hoy.getDate() - hoy.getDay());
+    
+    const inicioMes = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
+
+    let h = 0, s = 0, m = 0, t = 0;
+    
+    data.forEach(g => {
+      const fecha = new Date(g.created_at);
+      const monto = Number(g.monto);
+      t += monto;
+      if (fecha >= hoy) h += monto;
+      if (fecha >= inicioSemana) s += monto;
+      if (fecha >= inicioMes) m += monto;
+    });
+
+    setStats({ hoy: h, semana: s, mes: m, total: t });
   };
 
   const handleSubmit = async (e) => {
@@ -92,25 +120,25 @@ const ModuloGastos = ({ admin }) => {
     setMostrarModal(true);
   };
 
-  const totalGastos = gastos.reduce((acc, g) => acc + Number(g.monto), 0);
-
   return (
     <div className="max-w-6xl mx-auto p-4">
       {/* Header & Total Stats */}
-      <div className="bg-white rounded-3xl shadow-xl overflow-hidden border border-gray-100 mb-6">
-        <div className="bg-gradient-to-r from-rose-600 to-red-700 p-6 md:p-8 text-white">
-          <div className="flex flex-col md:flex-row justify-between items-center gap-6">
-            <div>
-              <h2 className="text-2xl md:text-3xl font-black flex items-center gap-3">
-                <TrendingDown size={32} /> Gestión de Gastos
-              </h2>
-              <p className="text-red-100 mt-1 opacity-80 text-sm">Control de egresos y salidas de caja</p>
-            </div>
-            <div className="bg-white/10 backdrop-blur-md p-4 rounded-2xl border border-white/20 text-center md:text-right w-full md:w-auto">
-              <p className="text-xs font-bold uppercase tracking-widest opacity-70 mb-1">Total Salidas</p>
-              <p className="text-3xl font-black">${totalGastos.toLocaleString()}</p>
-            </div>
-          </div>
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+        <div className="bg-gradient-to-br from-rose-600 to-red-700 p-6 rounded-3xl text-white shadow-lg shadow-rose-100 flex flex-col justify-center">
+          <p className="text-[10px] font-black uppercase tracking-widest opacity-70 mb-1">Gasto de Hoy</p>
+          <p className="text-3xl font-black">${stats.hoy.toLocaleString()}</p>
+        </div>
+        <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm flex flex-col justify-center">
+          <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Esta Semana</p>
+          <p className="text-2xl font-black text-gray-800">${stats.semana.toLocaleString()}</p>
+        </div>
+        <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm flex flex-col justify-center">
+          <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Este Mes</p>
+          <p className="text-2xl font-black text-gray-800">${stats.mes.toLocaleString()}</p>
+        </div>
+        <div className="bg-gray-900 p-6 rounded-3xl text-white shadow-xl flex flex-col justify-center">
+          <p className="text-[10px] font-black opacity-50 uppercase tracking-widest mb-1">Total Histórico</p>
+          <p className="text-2xl font-black text-rose-500">${stats.total.toLocaleString()}</p>
         </div>
       </div>
 
@@ -140,78 +168,88 @@ const ModuloGastos = ({ admin }) => {
             <p className="font-black uppercase tracking-widest text-sm text-center">No hay gastos registrados en el sistema</p>
           </div>
         ) : (
-          <>
-            {/* VISTA PARA MÓVILES (CARDS) */}
-            <div className="md:hidden p-4 space-y-4">
-              {gastos.map((g) => (
-                <div key={g.id} className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm relative overflow-hidden group">
-                  <div className="absolute top-0 right-0 p-2">
-                    <button onClick={() => prepararEdicion(g)} className="p-2 text-blue-500 hover:bg-blue-50 rounded-lg">
-                      <Edit2 size={18} />
-                    </button>
-                  </div>
-                  <div className="flex items-center gap-2 mb-3">
-                    <span className="px-2 py-1 bg-rose-50 text-rose-600 text-[9px] font-black uppercase rounded-lg border border-rose-100">
-                      {g.categoria}
-                    </span>
-                    <span className="text-[10px] text-gray-400 font-bold">
-                      {new Date(g.created_at).toLocaleString()}
-                    </span>
-                  </div>
-                  <p className="text-gray-800 font-bold text-sm mb-2">{g.descripcion}</p>
-                  <div className="flex justify-between items-end">
-                    <p className="text-xl font-black text-rose-600">-${Number(g.monto).toLocaleString()}</p>
-                    <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest">By @{g.registrado_por}</span>
-                  </div>
+          <div className="divide-y divide-gray-200">
+            {Object.entries(
+              gastos.reduce((groups, g) => {
+                const date = new Date(g.created_at).toLocaleDateString();
+                if (!groups[date]) groups[date] = [];
+                groups[date].push(g);
+                return groups;
+              }, {})
+            ).map(([fecha, gastosDelDia]) => (
+              <div key={fecha} className="bg-white">
+                <div className="bg-gray-50/50 px-8 py-3 flex justify-between items-center border-b border-gray-100">
+                   <h4 className="text-[10px] font-black text-gray-500 uppercase tracking-widest flex items-center gap-2">
+                     <Calendar size={12} /> {fecha}
+                   </h4>
+                   <span className="text-[10px] font-black text-rose-600">
+                     Total Día: -${gastosDelDia.reduce((sum, g) => sum + Number(g.monto), 0).toLocaleString()}
+                   </span>
                 </div>
-              ))}
-            </div>
-
-            {/* VISTA PARA DESKTOP (TABLA) */}
-            <div className="hidden md:block overflow-x-auto">
-              <table className="w-full text-left">
-                <thead className="bg-white border-b border-gray-100 text-[10px] font-black text-gray-400 uppercase tracking-widest">
-                  <tr>
-                    <th className="px-8 py-5">Fecha / Hora</th>
-                    <th className="px-8 py-5">Categoría</th>
-                    <th className="px-8 py-5">Descripción</th>
-                    <th className="px-8 py-5 text-right">Monto</th>
-                    <th className="px-8 py-5">Usuario</th>
-                    <th className="px-8 py-5 text-center">Acción</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100 bg-white">
-                  {gastos.map((g) => (
-                    <tr key={g.id} className="hover:bg-rose-50/30 transition-colors group">
-                      <td className="px-8 py-5 text-xs font-bold text-gray-500">
-                        {new Date(g.created_at).toLocaleString()}
-                      </td>
-                      <td className="px-8 py-5">
-                        <span className="px-3 py-1 bg-gray-50 text-gray-600 text-[10px] font-black uppercase rounded-full border border-gray-100">
-                          {g.categoria}
-                        </span>
-                      </td>
-                      <td className="px-8 py-5 font-bold text-gray-800 text-sm">{g.descripcion}</td>
-                      <td className="px-8 py-5 text-right text-lg font-black text-rose-600">-${Number(g.monto).toLocaleString()}</td>
-                      <td className="px-8 py-5">
-                        <span className="text-[10px] font-black text-blue-600 bg-blue-50 px-2 py-1 rounded-lg">
-                          @{g.registrado_por}
-                        </span>
-                      </td>
-                      <td className="px-8 py-5 text-center">
-                        <button 
-                          onClick={() => prepararEdicion(g)}
-                          className="p-2 text-gray-300 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all"
-                        >
+                
+                {/* VISTA PARA MÓVILES (CARDS) */}
+                <div className="md:hidden p-4 space-y-4">
+                  {gastosDelDia.map((g) => (
+                    <div key={g.id} className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm relative overflow-hidden group">
+                      <div className="absolute top-0 right-0 p-2">
+                        <button onClick={() => prepararEdicion(g)} className="p-2 text-blue-500 hover:bg-blue-50 rounded-lg">
                           <Edit2 size={18} />
                         </button>
-                      </td>
-                    </tr>
+                      </div>
+                      <div className="flex items-center gap-2 mb-3">
+                        <span className="px-2 py-1 bg-rose-50 text-rose-600 text-[9px] font-black uppercase rounded-lg border border-rose-100">
+                          {g.categoria}
+                        </span>
+                        <span className="text-[10px] text-gray-400 font-bold">
+                          {new Date(g.created_at).toLocaleTimeString()}
+                        </span>
+                      </div>
+                      <p className="text-gray-800 font-bold text-sm mb-2">{g.descripcion}</p>
+                      <div className="flex justify-between items-end">
+                        <p className="text-xl font-black text-rose-600">-${Number(g.monto).toLocaleString()}</p>
+                        <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest">By @{g.registrado_por}</span>
+                      </div>
+                    </div>
                   ))}
-                </tbody>
-              </table>
-            </div>
-          </>
+                </div>
+
+                {/* VISTA PARA DESKTOP (TABLA) */}
+                <div className="hidden md:block overflow-x-auto">
+                  <table className="w-full text-left">
+                    <tbody className="divide-y divide-gray-50 bg-white">
+                      {gastosDelDia.map((g) => (
+                        <tr key={g.id} className="hover:bg-rose-50/30 transition-colors group">
+                          <td className="px-8 py-5 text-xs font-bold text-gray-500 w-48">
+                            {new Date(g.created_at).toLocaleTimeString()}
+                          </td>
+                          <td className="px-8 py-5 w-40">
+                            <span className="px-3 py-1 bg-gray-50 text-gray-600 text-[10px] font-black uppercase rounded-full border border-gray-100">
+                              {g.categoria}
+                            </span>
+                          </td>
+                          <td className="px-8 py-5 font-bold text-gray-800 text-sm">{g.descripcion}</td>
+                          <td className="px-8 py-5 text-right text-lg font-black text-rose-600">-${Number(g.monto).toLocaleString()}</td>
+                          <td className="px-8 py-5 w-32">
+                            <span className="text-[10px] font-black text-blue-600 bg-blue-50 px-2 py-1 rounded-lg">
+                              @{g.registrado_por}
+                            </span>
+                          </td>
+                          <td className="px-8 py-5 text-center w-24">
+                            <button 
+                              onClick={() => prepararEdicion(g)}
+                              className="p-2 text-gray-300 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all"
+                            >
+                              <Edit2 size={18} />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ))}
+          </div>
         )}
       </div>
 
