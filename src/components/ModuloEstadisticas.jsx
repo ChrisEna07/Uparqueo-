@@ -15,6 +15,8 @@ const ModuloEstadisticas = () => {
   const [informalesAlDia, setInformalesAlDia] = useState([]);
   
   const [modalDatos, setModalDatos] = useState([]);
+  const [modalAbierto, setModalAbierto] = useState(false);
+  const [modalTipo, setModalTipo] = useState('dia');
   
   const [fechaConsulta, setFechaConsulta] = useState(new Date().toISOString().split('T')[0]);
 

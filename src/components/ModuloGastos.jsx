@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { TrendingDown, Plus, Edit2, Calendar, 
-  AlertCircle, X, Lock
+  AlertCircle, X, Lock, Loader2
 } from 'lucide-react';
 import { getGastos, registrarGasto, actualizarGasto } from '../services/gastosService';
 import Swal from 'sweetalert2';
