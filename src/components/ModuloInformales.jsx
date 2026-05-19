@@ -601,14 +601,27 @@ const ModuloInformales = ({ admin }) => {
 
                 {/* Info Financiera */}
                 <div className="p-6 md:p-8 space-y-6">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="bg-gray-50 p-4 rounded-2xl">
-                      <p className="text-[9px] text-gray-400 font-black uppercase tracking-widest mb-1">Días Totales</p>
-                      <p className="text-lg font-black text-gray-800">{n.dias_totales || 0} d</p>
+                  <div className="grid grid-cols-3 gap-2.5">
+                    <div className="bg-gray-50 p-3 rounded-2xl text-center">
+                      <p className="text-[8px] md:text-[9px] text-gray-400 font-black uppercase tracking-wider mb-1">Días Totales</p>
+                      <p className="text-sm md:text-base font-black text-gray-800">{n.dias_totales || 0} d</p>
                     </div>
-                    <div className="bg-gray-50 p-4 rounded-2xl">
-                      <p className="text-[9px] text-gray-400 font-black uppercase tracking-widest mb-1">Cargos Extra</p>
-                      <p className="text-lg font-black text-amber-600">${(n.suma_cargos_extra || 0).toLocaleString()}</p>
+                    <div className="bg-gray-50 p-3 rounded-2xl text-center">
+                      <p className="text-[8px] md:text-[9px] text-gray-400 font-black uppercase tracking-wider mb-1">Días Pendientes</p>
+                      <p className={`text-sm md:text-base font-black ${
+                        n.deuda_acumulada - (n.suma_cargos_extra || 0) > 0 ? 'text-red-600' : 'text-emerald-600'
+                      }`}>
+                        {(() => {
+                          const tarifaNegocio = n.valor_diario || tarifaGlobal;
+                          const baseTarifaDeuda = Math.max(0, n.deuda_acumulada - (n.suma_cargos_extra || 0));
+                          const dias = baseTarifaDeuda / tarifaNegocio;
+                          return dias % 1 === 0 ? dias : Number(dias.toFixed(1));
+                        })()} d
+                      </p>
+                    </div>
+                    <div className="bg-gray-50 p-3 rounded-2xl text-center">
+                      <p className="text-[8px] md:text-[9px] text-gray-400 font-black uppercase tracking-wider mb-1">Cargos Extra</p>
+                      <p className="text-sm md:text-base font-black text-amber-600">${(n.suma_cargos_extra || 0).toLocaleString()}</p>
                     </div>
                   </div>
 
@@ -623,7 +636,7 @@ const ModuloInformales = ({ admin }) => {
                       <button 
                         disabled={procesando}
                         onClick={() => handlePagoTotal(n)}
-                        className="bg-red-600 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest active:scale-95 disabled:opacity-50"
+                        className="bg-red-600 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest active:scale-95 disabled:opacity-50 cursor-pointer"
                       >
                         Liquidar
                       </button>

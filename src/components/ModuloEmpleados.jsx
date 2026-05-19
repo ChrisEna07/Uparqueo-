@@ -213,12 +213,16 @@ const ModuloEmpleados = ({ admin, selectedModule, refreshKey }) => {
                   >
                     Ver Ficha
                   </button>
-                  <button onClick={() => handleOpenModal('editar', emp)} className="p-4 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-2xl transition-all">
-                    <Edit2 size={20} />
-                  </button>
-                  <button onClick={() => handleEliminar(emp.id)} className="p-4 bg-red-50 text-red-500 hover:bg-red-100 rounded-2xl transition-all">
-                    <Trash2 size={20} />
-                  </button>
+                  {emp.rol?.startsWith('empleado') && (
+                    <>
+                      <button onClick={() => handleOpenModal('editar', emp)} className="p-4 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-2xl transition-all">
+                        <Edit2 size={20} />
+                      </button>
+                      <button onClick={() => handleEliminar(emp.id)} className="p-4 bg-red-50 text-red-500 hover:bg-red-100 rounded-2xl transition-all">
+                        <Trash2 size={20} />
+                      </button>
+                    </>
+                  )}
                 </div>
               </div>
             </motion.div>
