@@ -85,12 +85,18 @@ const ModuloInformales = ({ admin }) => {
       const hoyFin = new Date();
       hoyFin.setHours(23,59,59,999);
 
-      // Cargar gastos de hoy para el balance neto
-      const { data: egr } = await supabase
+      // Cargar gastos de hoy para el balance neto (solo del módulo informal)
+      let qEgr = supabase
         .from('egresos')
         .select('monto')
         .gte('created_at', hoy.toISOString())
-        .lte('created_at', hoyFin.toISOString());
+        .lte('created_at', hoyFin.toISOString())
+        .eq('modulo', 'informal');
+
+      if (admin?.organizacion_id) {
+        qEgr = qEgr.eq('organizacion_id', admin.organizacion_id);
+      }
+      const { data: egr } = await qEgr;
       
       const sumGastos = egr?.reduce((acc, g) => acc + Number(g.monto), 0) || 0;
       setGastosHoy(sumGastos);

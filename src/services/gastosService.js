@@ -1,59 +1,93 @@
 import { supabase } from '../lib/supabase';
 import { registrarAuditoria } from './auditService';
 
-export const getGastosPorFechas = async (inicio, fin) => {
+/**
+ * Consulta egresos filtrando por rango de fechas, módulo obligatorio y organizacion_id opcional.
+ */
+export const getGastosPorFechas = async (inicio, fin, modulo = 'parqueadero', organizacionId = null) => {
   try {
-    const { data, error } = await supabase
+    let query = supabase
       .from('egresos')
       .select('*')
       .gte('created_at', inicio)
       .lte('created_at', fin)
-      .is('deleted_at', null)
-      .order('created_at', { ascending: false });
+      .is('deleted_at', null);
+
+    if (modulo) {
+      query = query.eq('modulo', modulo);
+    }
+
+    if (organizacionId) {
+      query = query.eq('organizacion_id', organizacionId);
+    }
+
+    const { data, error } = await query.order('created_at', { ascending: false });
 
     if (error) throw error;
-    return { success: true, data };
+    return { success: true, data: data || [] };
   } catch (error) {
     console.error('Error al obtener gastos por fechas:', error);
     return { success: false, error: error.message };
   }
 };
 
-export const getGastos = async () => {
+/**
+ * Consulta todos los egresos activos para el módulo actual ('parqueadero' o 'informal'),
+ * filtrando por organizacion_id si el contexto lo provee.
+ */
+export const getGastos = async (modulo = 'parqueadero', organizacionId = null) => {
   try {
-    const { data, error } = await supabase
+    let query = supabase
       .from('egresos')
       .select('*')
-      .is('deleted_at', null)
-      .order('created_at', { ascending: false });
+      .is('deleted_at', null);
+
+    if (modulo) {
+      query = query.eq('modulo', modulo);
+    }
+
+    if (organizacionId) {
+      query = query.eq('organizacion_id', organizacionId);
+    }
+
+    const { data, error } = await query.order('created_at', { ascending: false });
 
     if (error) throw error;
-    return { success: true, data };
+    return { success: true, data: data || [] };
   } catch (error) {
     console.error('Error al obtener gastos:', error);
     return { success: false, error: error.message };
   }
 };
 
-export const registrarGasto = async (gastoData, adminUsername) => {
+/**
+ * Registra un nuevo gasto inyectando de forma automática y transparente
+ * 'modulo' y 'organizacion_id'.
+ */
+export const registrarGasto = async (gastoData, adminUsername, modulo = 'parqueadero', organizacionId = null) => {
   try {
+    const moduloFinal = gastoData.modulo || modulo || 'parqueadero';
+    const orgIdFinal = gastoData.organizacion_id !== undefined ? gastoData.organizacion_id : (organizacionId || null);
+
     const { data, error } = await supabase
       .from('egresos')
       .insert([{
         monto: gastoData.monto,
         descripcion: gastoData.descripcion,
         categoria: gastoData.categoria || 'Varios',
-        registrado_por: adminUsername
+        registrado_por: adminUsername,
+        modulo: moduloFinal,
+        organizacion_id: orgIdFinal
       }])
       .select();
 
     if (error) throw error;
 
-    // Registrar en trazabilidad con los parámetros correctos (modulo, accion, descripcion, usuario)
+    // Registrar en trazabilidad con los parámetros correctos
     await registrarAuditoria(
-      'gastos', 
+      moduloFinal === 'informal' ? 'informales' : 'gastos', 
       'EGRESO', 
-      `Gasto registrado: $${Number(gastoData.monto).toLocaleString()} - ${gastoData.descripcion}`,
+      `Gasto registrado [${moduloFinal}]: $${Number(gastoData.monto).toLocaleString()} - ${gastoData.descripcion}`,
       adminUsername
     );
 
@@ -64,15 +98,27 @@ export const registrarGasto = async (gastoData, adminUsername) => {
   }
 };
 
+/**
+ * Actualiza un gasto existente preservando modulo y organizacion_id.
+ */
 export const actualizarGasto = async (id, nuevosDatos, datosAnteriores, adminUsername) => {
   try {
+    const updatePayload = {
+      monto: nuevosDatos.monto,
+      descripcion: nuevosDatos.descripcion,
+      categoria: nuevosDatos.categoria
+    };
+
+    if (nuevosDatos.modulo) {
+      updatePayload.modulo = nuevosDatos.modulo;
+    }
+    if (nuevosDatos.organizacion_id !== undefined) {
+      updatePayload.organizacion_id = nuevosDatos.organizacion_id;
+    }
+
     const { data, error } = await supabase
       .from('egresos')
-      .update({
-        monto: nuevosDatos.monto,
-        descripcion: nuevosDatos.descripcion,
-        categoria: nuevosDatos.categoria
-      })
+      .update(updatePayload)
       .eq('id', id)
       .select();
 

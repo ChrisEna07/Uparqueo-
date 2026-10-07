@@ -109,8 +109,8 @@ const ModuloReportes = ({ selectedModule = 'parqueadero', admin }) => {
 
         const res = await getReportePorFechas(inicio, fin);
         
-        // Obtener gastos del mismo periodo
-        const { data: gastos } = await getGastosPorFechas(inicio, fin);
+        // Obtener gastos del mismo periodo para parqueadero
+        const { data: gastos } = await getGastosPorFechas(inicio, fin, 'parqueadero', admin?.organizacion_id);
         const sumGastos = (gastos || []).reduce((acc, g) => acc + Number(g.monto), 0);
         
         setAbonosData([]); // Parqueadero no muestra abonos informales
@@ -135,7 +135,7 @@ const ModuloReportes = ({ selectedModule = 'parqueadero', admin }) => {
         fin = hoyFin.toISOString();
         
         const { data: abonosRango } = await getPagosInformalesPorFechas(inicio, fin);
-        const { data: gastosRango } = await getGastosPorFechas(inicio, fin);
+        const { data: gastosRango } = await getGastosPorFechas(inicio, fin, 'informal', admin?.organizacion_id);
         
         const sumGastos = (gastosRango || []).reduce((acc, g) => acc + Number(g.monto), 0);
         const sumAbonos = (abonosRango || []).reduce((acc, a) => acc + Number(a.monto), 0);

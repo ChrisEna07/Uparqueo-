@@ -57,8 +57,8 @@ export const registrarCierreCaja = async (datosCierre, adminUsername, modulo) =>
     const cierreId = nuevoCierre.id;
 
     // 2. Bloquear transacciones vinculándolas al cierre de manera INDEPENDIENTE
-    // Solo bloqueamos egresos generales por ahora (idealmente se separarían por módulo también)
-    await supabase.from('egresos').update({ cierre_id: cierreId }).is('cierre_id', null);
+    const targetModulo = (modulo === 'informales' || modulo === 'informal') ? 'informal' : 'parqueadero';
+    await supabase.from('egresos').update({ cierre_id: cierreId }).eq('modulo', targetModulo).is('cierre_id', null);
     
     if (modulo === 'parqueadero') {
       await supabase.from('registros_parqueadero').update({ cierre_id: cierreId }).is('cierre_id', null);

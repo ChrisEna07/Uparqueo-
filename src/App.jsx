@@ -413,6 +413,9 @@ function App() {
     setAppView('login');
     setTab('parqueadero');
     localStorage.clear();
+    sessionStorage.removeItem('dev_bypass');
+    sessionStorage.removeItem('dev_authenticated');
+    sessionStorage.removeItem('billing_dismissed');
   };
 
   // 1. RUTA DIRECTA PARA EL PORTAL DE DESARROLLADOR / SUPERADMIN
@@ -648,7 +651,7 @@ function App() {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
               >
-                <ModuloGastos admin={admin} />
+                <ModuloGastos admin={admin} selectedModule={selectedModule} />
               </motion.div>
             )}
 

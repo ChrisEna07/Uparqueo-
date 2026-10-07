@@ -6,13 +6,18 @@ import { TrendingDown, Plus, Edit2, Calendar,
 import { getGastos, registrarGasto, actualizarGasto } from '../services/gastosService';
 import Swal from 'sweetalert2';
 
-const ModuloGastos = ({ admin }) => {
+const ModuloGastos = ({ admin, selectedModule }) => {
   const [gastos, setGastos] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [mostrarModal, setMostrarModal] = useState(false);
   const [enviando, setEnviando] = useState(false);
   const [editando, setEditando] = useState(null); // ID del gasto a editar
   const [datosOriginales, setDatosOriginales] = useState(null);
+
+  // Módulo estricto del contexto actual: 'parqueadero' o 'informal'
+  const moduloActual = (selectedModule === 'informales' || selectedModule === 'informal' || admin?.modulo === 'informal')
+    ? 'informal'
+    : 'parqueadero';
   
   const [nuevoGasto, setNuevoGasto] = useState({
     monto: '',
@@ -27,13 +32,13 @@ const ModuloGastos = ({ admin }) => {
 
   useEffect(() => {
     cargarGastos();
-  }, []);
+  }, [selectedModule, admin?.organizacion_id, admin?.modulo]);
 
   const [stats, setStats] = useState({ hoy: 0, semana: 0, mes: 0, total: 0 });
 
   const cargarGastos = async () => {
     setCargando(true);
-    const res = await getGastos();
+    const res = await getGastos(moduloActual, admin?.organizacion_id);
     if (res.success) {
       setGastos(res.data);
       calcularStats(res.data);
@@ -75,9 +80,17 @@ const ModuloGastos = ({ admin }) => {
     try {
       let res;
       if (editando) {
-        res = await actualizarGasto(editando, nuevoGasto, datosOriginales, admin.username);
+        res = await actualizarGasto(editando, {
+          ...nuevoGasto,
+          modulo: moduloActual,
+          organizacion_id: admin?.organizacion_id || null
+        }, datosOriginales, admin?.username);
       } else {
-        res = await registrarGasto(nuevoGasto, admin.username);
+        res = await registrarGasto({
+          ...nuevoGasto,
+          modulo: moduloActual,
+          organizacion_id: admin?.organizacion_id || null
+        }, admin?.username, moduloActual, admin?.organizacion_id);
       }
       
       if (res.success) {

@@ -1,14 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { AlertTriangle, Lock, X, Shield, Key, ArrowRight, ShieldCheck, Check } from 'lucide-react';
+import { AlertTriangle, Lock, X, Key, ShieldCheck } from 'lucide-react';
 
 export const BillingNotice = ({ admin, selectedModule, onDevRequest }) => {
   const [billing, setBilling] = useState(null);
   const [dismissed, setDismissed] = useState(false);
-  const [devBypass, setDevBypass] = useState(false);
   const [lockClicks, setLockClicks] = useState(0);
 
-  // ESTADO LOCAL DE REACT PARA DESBLOQUEO TÉCNICO (Sin SweetAlert ni portales externos)
+  // Estado local para formulario de desbloqueo técnico in-place
   const [showAuthForm, setShowAuthForm] = useState(false);
   const [inputKey, setInputKey] = useState('');
   const [authError, setAuthError] = useState('');
@@ -16,62 +15,69 @@ export const BillingNotice = ({ admin, selectedModule, onDevRequest }) => {
 
   const DEV_KEY = import.meta.env.VITE_DEV_ADMIN_KEY || 'ChrizDev07';
 
-  // Identificar los tenant_id potenciales que aplican al usuario actual
-  const activeTenantId = admin?.organizacion_id || admin?.tenant_id || admin?.business_id || null;
-  const currentModulo = selectedModule || (admin?.modulo === 'informal' ? 'informales' : 'parqueadero');
+  // Identificar el módulo activo del contexto actual ('parqueadero' o 'informal')
+  const moduloActual = (selectedModule === 'informales' || selectedModule === 'informal' || admin?.modulo === 'informal')
+    ? 'informal'
+    : 'parqueadero';
 
   useEffect(() => {
-    // Si ya se activó el bypass de desarrollador en esta pestaña
-    const bypassActive = sessionStorage.getItem('dev_bypass') === 'true';
-    if (bypassActive) {
-      setDevBypass(true);
-    }
-
-    // Si ya fue descartado en esta sesión y no es bloqueante
-    const isDismissed = sessionStorage.getItem('billing_dismissed') === 'true';
-    if (isDismissed) {
-      setDismissed(true);
-    }
+    // Resetear descarte local si cambian los parámetros de sesión
+    setDismissed(false);
 
     const fetchBilling = async () => {
       try {
+        // 1. Consulta directa y simplificada a tenant_billing ordenando por más reciente
         const { data, error } = await supabase
           .from('tenant_billing')
           .select('*')
-          .eq('banner_activo', true);
+          .eq('banner_activo', true)
+          .order('updated_at', { ascending: false });
 
         if (error) {
-          console.warn('tenant_billing aún no configurado o sin permisos:', error.message);
+          console.warn('[BillingNotice] Error al consultar tenant_billing:', error.message);
           return;
         }
 
         if (data && data.length > 0) {
           let matched = null;
-          // 1. Coincidencia por organizacion_id o tenant_id exacto
-          if (activeTenantId) {
-            matched = data.find(b => b.organizacion_id === activeTenantId || b.tenant_id === activeTenantId);
+
+          // Regla 1: Coincidencia específica por organizacion_id
+          if (admin?.organizacion_id) {
+            matched = data.find(b => b.organizacion_id === admin.organizacion_id || b.tenant_id === admin.organizacion_id);
           }
-          // 2. Coincidencia por módulo activo
-          if (!matched && currentModulo) {
-            matched = data.find(b => b.tenant_id === currentModulo);
+
+          // Regla 2: Coincidencia específica por módulo activo ('parqueadero' o 'informal' / 'informales')
+          if (!matched && moduloActual) {
+            matched = data.find(b => 
+              b.tenant_id === moduloActual || 
+              (moduloActual === 'informal' && b.tenant_id === 'informales')
+            );
           }
-          // 3. Fallback a configuración global 'default'
+
+          // Regla 3: Comodín global ('default') aplicable a todos los módulos
           if (!matched) {
             matched = data.find(b => b.tenant_id === 'default');
           }
+
+          console.log('[BillingNotice] Coincidencia activa:', { 
+            moduloActual, 
+            orgId: admin?.organizacion_id, 
+            matched, 
+            filasActivas: data.length 
+          });
 
           setBilling(matched || null);
         } else {
           setBilling(null);
         }
       } catch (err) {
-        console.error('Error fetching tenant_billing:', err);
+        console.error('[BillingNotice] Error en fetchBilling:', err);
       }
     };
 
     fetchBilling();
 
-    // Suscripción en tiempo real a cambios en la tabla tenant_billing
+    // Suscripción en tiempo real a cambios en tenant_billing
     const channel = supabase
       .channel('realtime_billing_channel')
       .on(
@@ -86,26 +92,31 @@ export const BillingNotice = ({ admin, selectedModule, onDevRequest }) => {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [admin, selectedModule, activeTenantId, currentModulo]);
+  }, [admin?.id, admin?.organizacion_id, admin?.modulo, selectedModule, moduloActual]);
 
-  // 1. REGLA CRÍTICA 1: Excluir totalmente la ruta del portal de desarrollador
+  // EXCLUSIÓN 1: Excluir inmediatamente si la ruta actual es /dev-portal
   const currentPath = window.location.pathname.toLowerCase();
-  if (currentPath === '/dev-portal' || currentPath.startsWith('/dev-portal/')) {
+  if (currentPath === '/dev-portal' || currentPath.startsWith('/dev-portal')) {
     return null;
   }
 
-  // 2. REGLA CRÍTICA 2: Bypass para desarrollador activo en la sesión actual
-  if (devBypass) {
-    return null;
-  }
-
-  // Bypass si el usuario autenticado tiene rol de SuperAdmin / Dev
+  // EXCLUSIÓN 2: Excluir inmediatamente si el usuario es superadmin o dev
   const esSuperAdmin = admin?.rol === 'superadmin' || 
                        admin?.rol === 'dev' || 
                        admin?.rol === 'admin_master';
+  if (esSuperAdmin) {
+    return null;
+  }
 
-  if (!billing || !billing.banner_activo) return null;
-  if (!billing.es_bloqueante && dismissed) return null;
+  // Si no hay configuración activa encontrada
+  if (!billing || !billing.banner_activo) {
+    return null;
+  }
+
+  // Si fue descartado por el usuario con el botón (X) en este ciclo y no es bloqueante
+  if (!billing.es_bloqueante && dismissed) {
+    return null;
+  }
 
   // Manejador del Formulario Interno de Desbloqueo Técnico
   const handleSubmitKey = (e) => {
@@ -113,11 +124,8 @@ export const BillingNotice = ({ admin, selectedModule, onDevRequest }) => {
     if (inputKey.trim() === DEV_KEY) {
       setAuthError('');
       setAuthSuccess(true);
-      sessionStorage.setItem('dev_bypass', 'true');
-      sessionStorage.setItem('dev_authenticated', 'true');
-      
       setTimeout(() => {
-        setDevBypass(true);
+        setDismissed(true);
         setShowAuthForm(false);
       }, 1000);
     } else {
@@ -125,7 +133,7 @@ export const BillingNotice = ({ admin, selectedModule, onDevRequest }) => {
     }
   };
 
-  // Manejador de clics repetidos sobre el ícono del candado (Backdoor secreto de 5 toques)
+  // Manejador de 5 clics seguidos en el candado para acceso técnico
   const handleLockClick = () => {
     const nextCount = lockClicks + 1;
     if (nextCount >= 5) {
@@ -138,31 +146,13 @@ export const BillingNotice = ({ admin, selectedModule, onDevRequest }) => {
     }
   };
 
-  // 3. Si el usuario actual es SuperAdmin/Dev pero el bloqueo está activo,
-  // NO le bloqueamos la pantalla, se lo mostramos como un aviso informativo flotante
-  if (esSuperAdmin && billing.es_bloqueante) {
-    if (dismissed) return null;
-    return (
-      <aside aria-label="Aviso de administrador" className="fixed bottom-4 right-4 z-[999990] bg-red-950/90 border border-red-500/50 rounded-2xl p-4 text-white shadow-2xl backdrop-blur-md max-w-sm animate-fade-in">
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex items-center gap-2 text-red-400 font-bold text-xs uppercase tracking-wider">
-            <Shield size={16} /> Modo SuperAdmin (Bloqueo Activo)
-          </div>
-          <button 
-            onClick={() => setDismissed(true)} 
-            className="text-gray-400 hover:text-white p-1"
-          >
-            <X size={14} />
-          </button>
-        </div>
-        <p className="text-xs text-gray-300 mt-2">
-          El sistema está bloqueando usuarios operativos. Puedes apagarlo en <a href="/dev-portal" className="text-blue-400 underline font-bold">/dev-portal</a>.
-        </p>
-      </aside>
-    );
-  }
+  const handleDismiss = () => {
+    setDismissed(true);
+  };
 
-  // 4. CASO BLOQUEANTE TOTAL (Sin botón X, modal a pantalla completa con backdrop estricto)
+  // =========================================================================
+  // CASO 1: BLOQUEO OBLIGATORIO (es_bloqueante === true)
+  // =========================================================================
   if (billing.es_bloqueante) {
     return (
       <div 
@@ -171,7 +161,6 @@ export const BillingNotice = ({ admin, selectedModule, onDevRequest }) => {
       >
         <div className="bg-gray-950 border-2 border-red-600/60 rounded-[2.5rem] max-w-lg w-full p-8 text-white shadow-[0_0_80px_rgba(220,38,38,0.4)] text-center animate-fade-in relative">
           
-          {/* MODAL / SUB-PANEL INTERNO DE DESBLOQUEO TÉCNICO (RENDERIZADO DENTRO DEL PROPIO COMPONENTE) */}
           {showAuthForm ? (
             <div className="space-y-6 animate-scale-up py-2">
               <div className="w-16 h-16 bg-blue-600/20 text-blue-400 rounded-3xl flex items-center justify-center mx-auto border border-blue-500/40 shadow-lg">
@@ -183,14 +172,14 @@ export const BillingNotice = ({ admin, selectedModule, onDevRequest }) => {
                   Acceso de Desarrollador
                 </h3>
                 <p className="text-gray-400 text-xs mt-1">
-                  Ingresa la clave maestra para levantar el bloqueo en esta sesión
+                  Ingresa la clave maestra para levantar el bloqueo
                 </p>
               </div>
 
               {authSuccess ? (
                 <div className="p-4 bg-emerald-500/20 border border-emerald-500/40 rounded-2xl text-emerald-400 text-xs font-bold flex items-center justify-center gap-2">
                   <ShieldCheck size={18} />
-                  <span>Clave correcta. Levantando bloqueo del sistema...</span>
+                  <span>Clave correcta. Levantando bloqueo...</span>
                 </div>
               ) : (
                 <form onSubmit={handleSubmitKey} className="space-y-4">
@@ -215,13 +204,13 @@ export const BillingNotice = ({ admin, selectedModule, onDevRequest }) => {
                     <button 
                       type="button"
                       onClick={() => { setShowAuthForm(false); setAuthError(''); setInputKey(''); }}
-                      className="flex-1 bg-gray-900 hover:bg-gray-800 text-gray-300 font-bold text-xs uppercase py-3.5 rounded-2xl border border-gray-800 transition"
+                      className="flex-1 bg-gray-900 hover:bg-gray-800 text-gray-300 font-bold text-xs uppercase py-3.5 rounded-2xl border border-gray-800 transition cursor-pointer"
                     >
                       Cancelar
                     </button>
                     <button 
                       type="submit"
-                      className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-black text-xs uppercase py-3.5 rounded-2xl transition shadow-lg shadow-blue-900/40"
+                      className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-black text-xs uppercase py-3.5 rounded-2xl transition shadow-lg shadow-blue-900/40 cursor-pointer"
                     >
                       Desbloquear
                     </button>
@@ -231,7 +220,7 @@ export const BillingNotice = ({ admin, selectedModule, onDevRequest }) => {
                     <button 
                       type="button"
                       onClick={() => { window.location.href = '/dev-portal'; }}
-                      className="text-[11px] text-blue-400 hover:text-blue-300 underline font-bold"
+                      className="text-[11px] text-blue-400 hover:text-blue-300 underline font-bold cursor-pointer"
                     >
                       Ir directamente a /dev-portal →
                     </button>
@@ -240,26 +229,29 @@ export const BillingNotice = ({ admin, selectedModule, onDevRequest }) => {
               )}
             </div>
           ) : (
-            /* VISTA NORMAL DEL BLOQUEO */
             <>
-              {/* Ícono interactivo: 5 toques activan el prompt interno del Dev */}
+              {/* Ícono interactivo: 5 clics abren el prompt técnico */}
               <button 
                 type="button"
                 onClick={handleLockClick}
-                className="w-20 h-20 bg-red-600/20 text-red-500 rounded-3xl flex items-center justify-center mx-auto mb-6 border border-red-500/40 shadow-xl shadow-red-950 cursor-pointer active:scale-90 transition-transform"
-                title="Tocar 5 veces para soporte técnico"
+                className="w-20 h-20 bg-red-600/20 text-red-500 rounded-3xl flex items-center justify-center mx-auto mb-6 border border-red-500/40 shadow-inner hover:scale-105 active:scale-95 transition-all cursor-pointer"
+                title="Toca 5 veces para soporte técnico"
               >
-                <Lock className="w-10 h-10 animate-pulse" />
+                <Lock className="w-10 h-10 animate-pulse text-red-500" />
               </button>
-              
-              <h2 className="text-3xl font-black text-white tracking-tight uppercase mb-3">
+
+              <h2 className="text-3xl font-black text-white tracking-tight uppercase mb-2">
                 Servicio Suspendido
               </h2>
               
-              <p className="text-gray-300 text-sm mb-6 leading-relaxed font-medium">
-                {billing.mensaje || 'Su mensualidad ha vencido. Por favor realice el pago para continuar utilizando el sistema.'}
+              <div className="inline-block bg-red-500/10 border border-red-500/30 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest text-red-400 mb-6">
+                Acceso Temporalmente Inhabilitado
+              </div>
+
+              <p className="text-gray-300 text-sm mb-6 leading-relaxed">
+                {billing.mensaje || 'Su cuenta presenta mensualidades pendientes. El acceso al sistema se encuentra restringido.'}
               </p>
-              
+
               <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5 text-left mb-6 shadow-inner">
                 <span className="text-[10px] text-amber-400 font-black tracking-widest uppercase block mb-2">
                   Información de Pago y Canales Autorizados
@@ -273,7 +265,7 @@ export const BillingNotice = ({ admin, selectedModule, onDevRequest }) => {
                 Una vez realizado el abono, notifique a soporte técnico para reactivar el acceso inmediatamente.
               </p>
 
-              {/* BOTÓN DISCRETO PARA ACCESO TÉCNICO INTERNO */}
+              {/* Botón discreto para acceso técnico */}
               <div className="pt-2 border-t border-gray-900 flex justify-between items-center text-[10px] text-gray-600">
                 <span>Uparqueo Security Engine</span>
                 <button 
@@ -292,26 +284,23 @@ export const BillingNotice = ({ admin, selectedModule, onDevRequest }) => {
     );
   }
 
-  // 5. CASO NO BLOQUEANTE (Banner superior o modal informativo con botón X)
-  const handleDismiss = () => {
-    setDismissed(true);
-    sessionStorage.setItem('billing_dismissed', 'true');
-  };
-
+  // =========================================================================
+  // CASO 2: BARRA SUPERIOR FIJADA (tipo_aviso === 'banner' && !es_bloqueante)
+  // =========================================================================
   if (billing.tipo_aviso === 'banner') {
     return (
       <aside 
         aria-label="Aviso de facturación" 
-        className="sticky top-0 z-[99990] w-full bg-amber-500 text-white px-4 py-2.5 flex justify-between items-center shadow-md"
+        className="sticky top-0 z-[99999] w-full bg-gradient-to-r from-amber-600 to-orange-600 text-white px-4 py-3 flex items-center justify-between shadow-lg font-semibold"
       >
         <div className="flex items-center gap-3 pr-4 overflow-hidden">
-          <div className="p-1 bg-black/20 rounded-md shrink-0">
-            <AlertTriangle className="w-4 h-4 text-amber-100" />
+          <div className="p-1.5 bg-black/20 rounded-xl shrink-0">
+            <AlertTriangle className="w-5 h-5 text-amber-100" />
           </div>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs md:text-sm">
-            <span className="font-bold tracking-tight">{billing.mensaje}</span>
+            <span>{billing.mensaje}</span>
             {billing.datos_pago && (
-              <span className="text-amber-100 text-xs font-mono bg-black/25 px-2 py-0.5 rounded border border-amber-400/20">
+              <span className="text-amber-100 text-xs font-mono bg-black/25 px-2.5 py-1 rounded-lg border border-amber-400/30">
                 {billing.datos_pago}
               </span>
             )}
@@ -319,22 +308,24 @@ export const BillingNotice = ({ admin, selectedModule, onDevRequest }) => {
         </div>
         <button 
           onClick={handleDismiss}
-          className="p-1 hover:bg-black/20 rounded-lg transition-colors shrink-0 text-amber-100 hover:text-white ml-2"
+          className="p-1.5 hover:bg-black/20 rounded-xl transition-colors shrink-0 text-amber-100 hover:text-white ml-2 cursor-pointer"
           title="Cerrar aviso"
         >
-          <X className="w-4 h-4" />
+          <X className="w-5 h-5" />
         </button>
       </aside>
     );
   }
 
-  // Modal informativo no bloqueante (con botón X)
+  // =========================================================================
+  // CASO 3: MODAL INFORMATIVO NO BLOQUEANTE (tipo_aviso === 'modal' && !es_bloqueante)
+  // =========================================================================
   return (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+    <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
       <div className="bg-gray-900 border border-amber-500/40 rounded-[2.5rem] max-w-md w-full p-8 text-white shadow-2xl relative animate-scale-up">
         <button 
           onClick={handleDismiss}
-          className="absolute top-6 right-6 text-gray-400 hover:text-white p-2 rounded-2xl hover:bg-gray-800 transition"
+          className="absolute top-6 right-6 text-gray-400 hover:text-white p-2 rounded-2xl hover:bg-gray-800 transition cursor-pointer"
           title="Cerrar"
         >
           <X className="w-5 h-5" />
@@ -349,12 +340,14 @@ export const BillingNotice = ({ admin, selectedModule, onDevRequest }) => {
           </div>
         </div>
         <p className="text-gray-300 text-sm mb-5 leading-relaxed">{billing.mensaje}</p>
-        <div className="bg-gray-950 p-4 rounded-2xl border border-gray-800 text-xs text-gray-300 mb-6 whitespace-pre-wrap font-mono leading-relaxed">
-          {billing.datos_pago}
-        </div>
+        {billing.datos_pago && (
+          <div className="bg-gray-950 p-4 rounded-2xl border border-gray-800 text-xs text-gray-300 mb-6 whitespace-pre-wrap font-mono leading-relaxed">
+            {billing.datos_pago}
+          </div>
+        )}
         <button 
           onClick={handleDismiss}
-          className="w-full bg-amber-500 hover:bg-amber-600 text-black text-xs font-black uppercase tracking-widest py-3.5 rounded-2xl transition shadow-lg shadow-amber-500/20"
+          className="w-full bg-amber-500 hover:bg-amber-600 text-black text-xs font-black uppercase tracking-widest py-3.5 rounded-2xl transition shadow-lg shadow-amber-500/20 cursor-pointer"
         >
           Entendido / Continuar
         </button>
