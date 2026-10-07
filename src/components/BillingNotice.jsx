@@ -1,13 +1,22 @@
 import React, { useEffect, useState } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { AlertTriangle, Lock, X, Key, ShieldCheck } from 'lucide-react';
 
 export const BillingNotice = ({ admin, selectedModule, onDevRequest }) => {
+  const navigate = useNavigate();
+  const location = useLocation();
   const [billing, setBilling] = useState(null);
   const [dismissed, setDismissed] = useState(false);
   const [lockClicks, setLockClicks] = useState(0);
 
-  // Estado local para formulario de desbloqueo técnico in-place
+  // Estados para control de desbloqueo técnico inmediato
+  const [isBlocked, setIsBlocked] = useState(true);
+  const [devBypass, setDevBypass] = useState(
+    sessionStorage.getItem('dev_bypass') === 'true'
+  );
+
+  // Formulario in-place de desbloqueo técnico
   const [showAuthForm, setShowAuthForm] = useState(false);
   const [inputKey, setInputKey] = useState('');
   const [authError, setAuthError] = useState('');
@@ -21,8 +30,11 @@ export const BillingNotice = ({ admin, selectedModule, onDevRequest }) => {
     : 'parqueadero';
 
   useEffect(() => {
-    // Resetear descarte local si cambian los parámetros de sesión
-    setDismissed(false);
+    // Si ya existe bypass en la pestaña actual
+    if (sessionStorage.getItem('dev_bypass') === 'true') {
+      setDevBypass(true);
+      setIsBlocked(false);
+    }
 
     const fetchBilling = async () => {
       try {
@@ -95,7 +107,7 @@ export const BillingNotice = ({ admin, selectedModule, onDevRequest }) => {
   }, [admin?.id, admin?.organizacion_id, admin?.modulo, selectedModule, moduloActual]);
 
   // EXCLUSIÓN 1: Excluir inmediatamente si la ruta actual es /dev-portal
-  const currentPath = window.location.pathname.toLowerCase();
+  const currentPath = (location?.pathname || window.location.pathname).toLowerCase();
   if (currentPath === '/dev-portal' || currentPath.startsWith('/dev-portal')) {
     return null;
   }
@@ -105,6 +117,11 @@ export const BillingNotice = ({ admin, selectedModule, onDevRequest }) => {
                        admin?.rol === 'dev' || 
                        admin?.rol === 'admin_master';
   if (esSuperAdmin) {
+    return null;
+  }
+
+  // EXCLUSIÓN 3: Si se activó bypass de desarrollador o se levantó el bloqueo
+  if (devBypass || !isBlocked || sessionStorage.getItem('dev_bypass') === 'true') {
     return null;
   }
 
@@ -118,19 +135,31 @@ export const BillingNotice = ({ admin, selectedModule, onDevRequest }) => {
     return null;
   }
 
-  // Manejador del Formulario Interno de Desbloqueo Técnico
+  // Método de validación de clave exitosa: desmonta de inmediato el componente
   const handleSubmitKey = (e) => {
     e.preventDefault();
     if (inputKey.trim() === DEV_KEY) {
       setAuthError('');
       setAuthSuccess(true);
-      setTimeout(() => {
-        setDismissed(true);
-        setShowAuthForm(false);
-      }, 1000);
+      
+      sessionStorage.setItem('dev_bypass', 'true');
+      sessionStorage.setItem('dev_authenticated', 'true');
+      setIsBlocked(false);
+      setDevBypass(true);
+      setShowAuthForm(false);
     } else {
       setAuthError('Clave de Desarrollador incorrecta.');
     }
+  };
+
+  // Navegación interna SPA al Portal de Desarrollador
+  const handleGoToDevPortal = () => {
+    sessionStorage.setItem('dev_bypass', 'true');
+    sessionStorage.setItem('dev_authenticated', 'true');
+    setIsBlocked(false);
+    setDevBypass(true);
+    setShowAuthForm(false);
+    navigate('/dev-portal');
   };
 
   // Manejador de 5 clics seguidos en el candado para acceso técnico
@@ -219,7 +248,7 @@ export const BillingNotice = ({ admin, selectedModule, onDevRequest }) => {
                   <div className="pt-2">
                     <button 
                       type="button"
-                      onClick={() => { window.location.href = '/dev-portal'; }}
+                      onClick={handleGoToDevPortal}
                       className="text-[11px] text-blue-400 hover:text-blue-300 underline font-bold cursor-pointer"
                     >
                       Ir directamente a /dev-portal →

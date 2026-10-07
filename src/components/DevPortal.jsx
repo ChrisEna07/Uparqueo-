@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { 
   Shield, Key, CheckCircle, AlertCircle, RefreshCw, 
@@ -354,12 +355,12 @@ export const DevPortal = () => {
             >
               Autenticar y Entrar
             </button>
-            <a 
-              href="/"
+            <Link 
+              to="/"
               className="block text-center text-xs text-gray-500 hover:text-gray-300 font-bold mt-4"
             >
               Volver a la App Principal
-            </a>
+            </Link>
           </form>
         </div>
       </div>
@@ -385,12 +386,12 @@ export const DevPortal = () => {
           </div>
 
           <div className="flex items-center gap-3">
-            <a 
-              href="/"
+            <Link 
+              to="/"
               className="text-xs bg-gray-900 hover:bg-gray-800 text-gray-300 font-bold px-4 py-2.5 rounded-xl border border-gray-800 transition flex items-center gap-2"
             >
               <ArrowLeft size={16} /> Volver a la App
-            </a>
+            </Link>
             <button 
               onClick={() => {
                 sessionStorage.removeItem('dev_authenticated');

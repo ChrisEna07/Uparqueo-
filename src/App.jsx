@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { Routes, Route } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Car, Users, Settings, AlertCircle, CheckCircle, Menu, X, TrendingUp, TrendingDown, ArrowLeft, ShieldAlert, Camera, Download, Image as ImageIcon } from 'lucide-react';
 import RegistroEntrada from './components/RegistroEntrada';
@@ -418,53 +419,50 @@ function App() {
     sessionStorage.removeItem('billing_dismissed');
   };
 
-  // 1. RUTA DIRECTA PARA EL PORTAL DE DESARROLLADOR / SUPERADMIN
-  if (window.location.pathname === '/dev-portal') {
-    return <DevPortal />;
-  }
+  // RENDERIZADO DEL CONTENIDO DE LA APLICACIÓN SEGÚN LA VISTA Y SESIÓN
+  const renderAppContent = () => {
+    if (appView === 'login') {
+      return (
+        <>
+          <BillingNotice admin={admin} selectedModule={selectedModule} onDevRequest={activarDevTools} />
+          <Login onLoginSuccess={handleLogin} onDevRequest={activarDevTools} />
+          <AnimatePresence>
+            {mostrarDevTools && (
+              <DevTools 
+                onClose={() => setMostrarDevTools(false)} 
+                currentAdmin={admin} 
+                onAction={() => setRefreshKey(k => k + 1)}
+              />
+            )}
+          </AnimatePresence>
+        </>
+      );
+    }
 
-  if (appView === 'login') {
+    if (appView === 'home') {
+      return (
+        <>
+          <BillingNotice admin={admin} selectedModule={selectedModule} onDevRequest={activarDevTools} />
+          <HomePanel 
+            admin={admin} 
+            onSelectModule={handleSelectModule} 
+            onLogout={handleLogout} 
+          />
+          <AnimatePresence>
+            {mostrarDevTools && (
+              <DevTools 
+                onClose={() => setMostrarDevTools(false)} 
+                currentAdmin={admin} 
+                onAction={() => setRefreshKey(k => k + 1)}
+              />
+            )}
+          </AnimatePresence>
+        </>
+      );
+    }
+
     return (
-      <>
-        <BillingNotice admin={admin} selectedModule={selectedModule} onDevRequest={activarDevTools} />
-        <Login onLoginSuccess={handleLogin} onDevRequest={activarDevTools} />
-        <AnimatePresence>
-          {mostrarDevTools && (
-            <DevTools 
-              onClose={() => setMostrarDevTools(false)} 
-              currentAdmin={admin} 
-              onAction={() => setRefreshKey(k => k + 1)}
-            />
-          )}
-        </AnimatePresence>
-      </>
-    );
-  }
-
-  if (appView === 'home') {
-    return (
-      <>
-        <BillingNotice admin={admin} selectedModule={selectedModule} onDevRequest={activarDevTools} />
-        <HomePanel 
-          admin={admin} 
-          onSelectModule={handleSelectModule} 
-          onLogout={handleLogout} 
-        />
-        <AnimatePresence>
-          {mostrarDevTools && (
-            <DevTools 
-              onClose={() => setMostrarDevTools(false)} 
-              currentAdmin={admin} 
-              onAction={() => setRefreshKey(k => k + 1)}
-            />
-          )}
-        </AnimatePresence>
-      </>
-    );
-  }
-
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-950 dark:to-gray-900 text-gray-900 dark:text-gray-100 flex flex-col transition-colors duration-300">
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-950 dark:to-gray-900 text-gray-900 dark:text-gray-100 flex flex-col transition-colors duration-300">
       <BillingNotice admin={admin} selectedModule={selectedModule} onDevRequest={activarDevTools} />
       <AnimatePresence>
         {notification && (
@@ -929,7 +927,15 @@ function App() {
           </div>
         )}
       </AnimatePresence>
-    </div>
+      </div>
+    );
+  };
+
+  return (
+    <Routes>
+      <Route path="/dev-portal" element={<DevPortal />} />
+      <Route path="*" element={renderAppContent()} />
+    </Routes>
   );
 }
 
