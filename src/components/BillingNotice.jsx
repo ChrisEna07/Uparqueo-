@@ -302,7 +302,7 @@ export const BillingNotice = ({ admin, selectedModule, onDevRequest }) => {
     return (
       <aside 
         aria-label="Aviso de facturación" 
-        className="sticky top-0 z-[99990] w-full bg-amber-500/90 text-white px-4 py-2 flex justify-between items-center shadow-md backdrop-blur-sm"
+        className="sticky top-0 z-[99990] w-full bg-amber-500 text-white px-4 py-2.5 flex justify-between items-center shadow-md"
       >
         <div className="flex items-center gap-3 pr-4 overflow-hidden">
           <div className="p-1 bg-black/20 rounded-md shrink-0">

@@ -16,7 +16,7 @@ export const getTenantsList = async () => {
     try {
       const { data: orgs, error: orgError } = await supabase
         .from('organizaciones')
-        .select('id, nombre, slug, estado')
+        .select('*')
         .order('nombre', { ascending: true });
 
       if (!orgError && Array.isArray(orgs) && orgs.length > 0) {
@@ -25,7 +25,9 @@ export const getTenantsList = async () => {
             id: o.id,
             slug: o.slug,
             nombre: `🏢 Org: ${o.nombre} (${o.estado})`,
-            tipo: 'organizacion'
+            tipo: 'organizacion',
+            modulos_activos: o.modulos_activos,
+            estado: o.estado
           });
         });
       }

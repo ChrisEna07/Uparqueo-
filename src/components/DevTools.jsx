@@ -38,6 +38,7 @@ const DevTools = ({ onClose, currentAdmin, onAction }) => {
     datos_pago: 'Nequi / Daviplata: 300 000 0000 - A nombre de: Administrador'
   });
   const [guardandoBilling, setGuardandoBilling] = useState(false);
+  const [billingRow, setBillingRow] = useState(null);
 
   const [formData, setFormData] = useState({
     username: '',
@@ -56,24 +57,46 @@ const DevTools = ({ onClose, currentAdmin, onAction }) => {
     const res = await getTenantsList();
     if (res.success && res.data.length > 0) {
       setTenantsList(res.data);
+      await cargarBilling('default', res.data);
+    } else {
+      await cargarBilling('default', []);
     }
-    await cargarBilling('default');
   };
 
-  const cargarBilling = async (tenantId = selectedTenantId) => {
+  const cargarBilling = async (tenantId = selectedTenantId, listOverride = null) => {
     try {
-      const { data, error } = await supabase
-        .from('tenant_billing')
-        .select('*')
-        .eq('tenant_id', tenantId)
+      const activeList = listOverride || tenantsList;
+      const isUuid = (val) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val);
+      const item = activeList.find(t => t.id === tenantId || t.slug === tenantId);
+      const selectedOrgId = item?.tipo === 'organizacion' && isUuid(item.id) ? item.id : (isUuid(tenantId) ? tenantId : null);
+      const selectedTenantKey = item?.slug || item?.id || tenantId;
+
+      let query = supabase.from('tenant_billing').select('*');
+      if (selectedOrgId && isUuid(selectedOrgId)) {
+        query = query.or(`organizacion_id.eq.${selectedOrgId},tenant_id.eq.${selectedTenantKey}`);
+      } else {
+        query = query.eq('tenant_id', selectedTenantKey);
+      }
+
+      const { data, error } = await query
+        .order('updated_at', { ascending: false })
+        .limit(1)
         .maybeSingle();
 
       if (data) {
-        setBillingData(data);
+        setBillingRow(data);
+        setBillingData({
+          banner_activo: data.banner_activo ?? false,
+          tipo_aviso: data.tipo_aviso ?? 'banner',
+          es_bloqueante: data.es_bloqueante ?? false,
+          mensaje: data.mensaje ?? '',
+          datos_pago: data.datos_pago ?? ''
+        });
       } else {
+        setBillingRow(null);
         setBillingData({
           banner_activo: false,
-          tipo_aviso: 'modal',
+          tipo_aviso: 'banner',
           es_bloqueante: false,
           mensaje: 'Su mensualidad ha vencido. Por favor realice el pago para continuar utilizando el sistema.',
           datos_pago: 'Nequi / Daviplata: 300 000 0000 - A nombre de: Administrador'
@@ -93,20 +116,34 @@ const DevTools = ({ onClose, currentAdmin, onAction }) => {
   const guardarBilling = async () => {
     setGuardandoBilling(true);
     try {
-      const { error } = await supabase
+      const isUuid = (val) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val);
+      const item = tenantsList.find(t => t.id === selectedTenantId || t.slug === selectedTenantId);
+      const selectedOrgId = item?.tipo === 'organizacion' && isUuid(item.id) ? item.id : (isUuid(selectedTenantId) ? selectedTenantId : null);
+      const selectedTenantKey = billingRow?.tenant_id || item?.slug || item?.id || selectedTenantId;
+
+      const upsertPayload = {
+        tenant_id: selectedTenantKey,
+        organizacion_id: selectedOrgId || null,
+        banner_activo: billingData.banner_activo,
+        tipo_aviso: billingData.tipo_aviso,
+        es_bloqueante: billingData.es_bloqueante,
+        mensaje: billingData.mensaje,
+        datos_pago: billingData.datos_pago,
+        updated_at: new Date().toISOString()
+      };
+      if (billingRow?.id) {
+        upsertPayload.id = billingRow.id;
+      }
+
+      const { data: savedData, error } = await supabase
         .from('tenant_billing')
-        .upsert({
-          tenant_id: selectedTenantId,
-          banner_activo: billingData.banner_activo,
-          tipo_aviso: billingData.tipo_aviso,
-          es_bloqueante: billingData.es_bloqueante,
-          mensaje: billingData.mensaje,
-          datos_pago: billingData.datos_pago,
-          updated_at: new Date().toISOString()
-        }, { onConflict: 'tenant_id' });
+        .upsert(upsertPayload, { onConflict: 'tenant_id' })
+        .select()
+        .single();
 
       if (error) throw error;
-      Swal.fire('¡Configuración Guardada!', `El estado de cobro para el tenant [${selectedTenantId}] fue sincronizado en tiempo real.`, 'success');
+      if (savedData) setBillingRow(savedData);
+      Swal.fire('¡Configuración Guardada!', `El estado de cobro para el tenant [${selectedTenantKey}] fue sincronizado en tiempo real.`, 'success');
     } catch (err) {
       Swal.fire('Error', 'No se pudo guardar la configuración: ' + err.message, 'error');
     } finally {

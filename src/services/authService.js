@@ -68,11 +68,16 @@ export const getAdmins = async (adminObj, moduloStr, esDevConsole = false) => {
     // Si no es desde la consola Dev o superadmin global, filtramos por módulo
     const esSuper = adminObj?.rol === 'ambos' || adminObj?.rol === 'admin_master' || adminObj?.rol === 'superadmin' || adminObj?.rol === 'dev';
 
-    if (!esDevConsole && !esSuper && moduloStr) {
-      // Normalizar nombre de módulo ('parqueadero' o 'informal')
-      const targetModulo = moduloStr === 'informales' ? 'informal' : moduloStr;
-      // Permitir ver los que tienen ese módulo o 'ambos'/'todos'
-      query = query.or(`modulo.eq.${targetModulo},modulo.eq.ambos,modulo.eq.todos`);
+    if (!esDevConsole && !esSuper) {
+      if (adminObj?.organizacion_id) {
+        query = query.eq('organizacion_id', adminObj.organizacion_id);
+      }
+      if (moduloStr) {
+        // Normalizar nombre de módulo ('parqueadero' o 'informal')
+        const targetModulo = moduloStr === 'informales' ? 'informal' : moduloStr;
+        // Permitir ver los que tienen ese módulo o 'ambos'/'todos'
+        query = query.or(`modulo.eq.${targetModulo},modulo.eq.ambos,modulo.eq.todos`);
+      }
     } else if (!esDevConsole && moduloStr && esSuper) {
       // Si el superadmin seleccionó ver un módulo específico en la vista operativa
       const targetModulo = moduloStr === 'informales' ? 'informal' : moduloStr;
@@ -169,17 +174,23 @@ export const createAdmin = async (formData) => {
     }
 
     // 3. El trigger de la DB habrá creado un perfil con el nuevo ID. 
-    // Lo actualizamos con los datos del formulario incluyendo 'modulo'.
+    // Lo actualizamos con los datos del formulario incluyendo 'modulo' y 'organizacion_id'.
     if (authData?.user) {
+      const updatePayload = {
+        username: formData.username.trim().toLowerCase(),
+        nombre_completo: formData.nombre_completo,
+        rol: formData.rol,
+        modulo: moduloAsignado,
+        foto_perfil: formData.foto_perfil
+      };
+
+      if (formData.organizacion_id) {
+        updatePayload.organizacion_id = formData.organizacion_id;
+      }
+
       const { error: profileError } = await supabase
         .from('perfiles')
-        .update({
-          username: formData.username.trim().toLowerCase(),
-          nombre_completo: formData.nombre_completo,
-          rol: formData.rol,
-          modulo: moduloAsignado,
-          foto_perfil: formData.foto_perfil
-        })
+        .update(updatePayload)
         .eq('id', authData.user.id);
         
       if (profileError) {

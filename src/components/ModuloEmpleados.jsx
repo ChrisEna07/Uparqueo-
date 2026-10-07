@@ -110,7 +110,12 @@ const ModuloEmpleados = ({ admin, selectedModule, refreshKey }) => {
 
     try {
       if (modo === 'crear') {
-        const res = await createAdmin({ ...form, rol: rolFinal, modulo: moduloFinal });
+        const res = await createAdmin({ 
+          ...form, 
+          rol: rolFinal, 
+          modulo: moduloFinal,
+          organizacion_id: admin?.organizacion_id || null
+        });
         if (res.success) {
           Swal.fire('¡Éxito!', 'Empleado registrado correctamente', 'success');
           setMostrarModal(false);
@@ -119,7 +124,14 @@ const ModuloEmpleados = ({ admin, selectedModule, refreshKey }) => {
           Swal.fire('Error', res.message, 'error');
         }
       } else if (modo === 'editar') {
-        const dataUpdate = { ...form, rol: rolFinal, modulo: moduloFinal };
+        const dataUpdate = { 
+          ...form, 
+          rol: rolFinal, 
+          modulo: moduloFinal 
+        };
+        if (admin?.organizacion_id) {
+          dataUpdate.organizacion_id = admin.organizacion_id;
+        }
         if (!dataUpdate.password) delete dataUpdate.password;
         const res = await updateAdmin(usuarioSel.id, dataUpdate);
         if (res.success) {
