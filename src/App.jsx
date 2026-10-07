@@ -14,6 +14,8 @@ import ModuloEmpleados from './components/ModuloEmpleados';
 import ModuloGastos from './components/ModuloGastos';
 import { Bell } from 'lucide-react';
 import DevTools from './components/DevTools';
+import DevPortal from './components/DevPortal';
+import BillingNotice from './components/BillingNotice';
 import Login from './components/Login';
 import HomePanel from './components/HomePanel';
 import { onAuthStateChange, getPerfil, logout } from './services/authService';
@@ -413,9 +415,15 @@ function App() {
     localStorage.clear();
   };
 
+  // 1. RUTA DIRECTA PARA EL PORTAL DE DESARROLLADOR / SUPERADMIN
+  if (window.location.pathname === '/dev-portal') {
+    return <DevPortal />;
+  }
+
   if (appView === 'login') {
     return (
       <>
+        <BillingNotice />
         <Login onLoginSuccess={handleLogin} onDevRequest={activarDevTools} />
         <AnimatePresence>
           {mostrarDevTools && (
@@ -433,6 +441,7 @@ function App() {
   if (appView === 'home') {
     return (
       <>
+        <BillingNotice />
         <HomePanel 
           admin={admin} 
           onSelectModule={handleSelectModule} 
@@ -453,6 +462,7 @@ function App() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-950 dark:to-gray-900 text-gray-900 dark:text-gray-100 flex flex-col transition-colors duration-300">
+      <BillingNotice />
       <AnimatePresence>
         {notification && (
           <motion.div

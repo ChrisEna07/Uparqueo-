@@ -7,7 +7,7 @@ import {
   ChevronRight, Key, Car, Store, Briefcase,
   UserPlus, UserCheck, ShieldCheck, Edit2, Eye, EyeOff, Clock,
   LayoutGrid, MessageSquare, ShieldAlert, Search, ArrowLeft, Send, Menu,
-  TrendingDown
+  TrendingDown, CreditCard, Save, CheckCircle
 } from 'lucide-react';
 import { getAdmins, createAdmin, deleteAdmin, updateAdmin } from '../services/authService';
 import ModuloSoporte from './ModuloSoporte';
@@ -26,6 +26,16 @@ const DevTools = ({ onClose, currentAdmin, onAction }) => {
   const canvasRef = useRef(null);
   const [showPassword, setShowPassword] = useState(false);
   
+  // Estados para Cobro / Suscripción
+  const [billingData, setBillingData] = useState({
+    banner_activo: false,
+    tipo_aviso: 'modal',
+    es_bloqueante: false,
+    mensaje: 'Su mensualidad ha vencido. Por favor realice el pago para continuar utilizando el sistema.',
+    datos_pago: 'Nequi / Daviplata: 300 000 0000 - A nombre de: Administrador'
+  });
+  const [guardandoBilling, setGuardandoBilling] = useState(false);
+
   const [formData, setFormData] = useState({
     username: '',
     password: '',
@@ -36,7 +46,48 @@ const DevTools = ({ onClose, currentAdmin, onAction }) => {
 
   useEffect(() => {
     cargarAdmins();
+    cargarBilling();
   }, []);
+
+  const cargarBilling = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('tenant_billing')
+        .select('*')
+        .eq('tenant_id', 'default')
+        .maybeSingle();
+
+      if (data) {
+        setBillingData(data);
+      }
+    } catch (err) {
+      console.error("Error al cargar billing:", err);
+    }
+  };
+
+  const guardarBilling = async () => {
+    setGuardandoBilling(true);
+    try {
+      const { error } = await supabase
+        .from('tenant_billing')
+        .upsert({
+          tenant_id: 'default',
+          banner_activo: billingData.banner_activo,
+          tipo_aviso: billingData.tipo_aviso,
+          es_bloqueante: billingData.es_bloqueante,
+          mensaje: billingData.mensaje,
+          datos_pago: billingData.datos_pago,
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'tenant_id' });
+
+      if (error) throw error;
+      Swal.fire('¡Configuración Guardada!', 'El estado de suscripción fue sincronizado en tiempo real.', 'success');
+    } catch (err) {
+      Swal.fire('Error', 'No se pudo guardar la configuración: ' + err.message, 'error');
+    } finally {
+      setGuardandoBilling(false);
+    }
+  };
 
   const cargarAdmins = async () => {
     const res = await getAdmins(currentAdmin, null, true);
@@ -144,6 +195,7 @@ const DevTools = ({ onClose, currentAdmin, onAction }) => {
           <div className="flex-1 space-y-3">
             {[
               { id: 'admins', icon: Users, label: 'Usuarios Master' },
+              { id: 'billing', icon: CreditCard, label: 'Cobro & Suscripción' },
               { id: 'support', icon: MessageSquare, label: 'Diagnóstico & Soporte' },
               { id: 'backup', icon: FileJson, label: 'Respaldo JSON' },
               { id: 'reset', icon: AlertTriangle, label: 'Reinicio Maestro' }
@@ -402,6 +454,111 @@ const DevTools = ({ onClose, currentAdmin, onAction }) => {
                       </button>
                     </form>
                   )}
+                </motion.div>
+              )}
+              {activeTab === 'billing' && (
+                <motion.div key="billing" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-8 max-w-4xl mx-auto">
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <h3 className="text-3xl font-black text-white">Control de Cobro Mensual</h3>
+                      <p className="text-gray-400 text-sm mt-1">Configura el bloqueo o banner de advertencia para este tenant</p>
+                    </div>
+                    <button 
+                      onClick={cargarBilling}
+                      className="text-xs bg-gray-800 hover:bg-gray-700 text-gray-300 font-bold px-4 py-2.5 rounded-xl border border-gray-700 transition"
+                    >
+                      Recargar Datos
+                    </button>
+                  </div>
+
+                  <div className="bg-gray-900/60 border border-gray-800 rounded-[2.5rem] p-8 space-y-6">
+                    {/* Switch de activación */}
+                    <div className="flex items-center justify-between p-5 bg-gray-950/80 rounded-2xl border border-gray-800">
+                      <div>
+                        <span className="font-black text-white text-base block">Activar Advertencia de Cobro</span>
+                        <span className="text-xs text-gray-400 font-medium">
+                          Muestra el modal o banner en todas las vistas de la aplicación
+                        </span>
+                      </div>
+                      <label className="relative inline-flex items-center cursor-pointer">
+                        <input 
+                          type="checkbox" 
+                          checked={billingData.banner_activo} 
+                          onChange={(e) => setBillingData({ ...billingData, banner_activo: e.target.checked })} 
+                          className="sr-only peer"
+                        />
+                        <div className="w-14 h-7 bg-gray-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[4px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-blue-600"></div>
+                      </label>
+                    </div>
+
+                    {/* Selector de modo y bloqueo */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="p-5 bg-gray-950/80 rounded-2xl border border-gray-800 space-y-2">
+                        <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block">
+                          Tipo de Aviso Visual
+                        </label>
+                        <select 
+                          value={billingData.tipo_aviso}
+                          onChange={(e) => setBillingData({ ...billingData, tipo_aviso: e.target.value })}
+                          className="w-full bg-gray-900 border border-gray-800 rounded-xl px-4 py-3 text-sm text-white font-bold outline-none focus:border-blue-500"
+                        >
+                          <option value="modal">Modal Centrado</option>
+                          <option value="banner">Banner Superior Fijo</option>
+                        </select>
+                      </div>
+
+                      <div className="p-5 bg-gray-950/80 rounded-2xl border border-gray-800 space-y-2">
+                        <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block">
+                          Nivel de Restricción
+                        </label>
+                        <select 
+                          value={billingData.es_bloqueante ? 'bloqueante' : 'informativo'}
+                          onChange={(e) => setBillingData({ ...billingData, es_bloqueante: e.target.value === 'bloqueante' })}
+                          className="w-full bg-gray-900 border border-gray-800 rounded-xl px-4 py-3 text-sm text-white font-bold outline-none focus:border-blue-500"
+                        >
+                          <option value="informativo">Aviso Informativo (Con botón X para cerrar)</option>
+                          <option value="bloqueante">Bloqueo Obligatorio (Sin botón X / Bloquea la App)</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* Mensaje de cobro */}
+                    <div>
+                      <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2 ml-1">
+                        Mensaje de Notificación
+                      </label>
+                      <textarea 
+                        rows="3"
+                        value={billingData.mensaje}
+                        onChange={(e) => setBillingData({ ...billingData, mensaje: e.target.value })}
+                        placeholder="Ej: Su mensualidad ha vencido..."
+                        className="w-full bg-gray-950 border border-gray-800 rounded-2xl p-4 text-white text-sm font-medium outline-none focus:border-blue-500"
+                      />
+                    </div>
+
+                    {/* Canales y cuentas de pago */}
+                    <div>
+                      <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2 ml-1">
+                        Cuentas Bancarias / Canales de Pago
+                      </label>
+                      <textarea 
+                        rows="3"
+                        value={billingData.datos_pago}
+                        onChange={(e) => setBillingData({ ...billingData, datos_pago: e.target.value })}
+                        placeholder="Ej: Nequi / Bancolombia / Daviplata..."
+                        className="w-full bg-gray-950 border border-gray-800 rounded-2xl p-4 text-white text-sm font-mono outline-none focus:border-blue-500"
+                      />
+                    </div>
+
+                    <button 
+                      onClick={guardarBilling}
+                      disabled={guardandoBilling}
+                      className="w-full bg-blue-600 hover:bg-blue-700 font-black text-white text-sm uppercase tracking-widest py-5 rounded-2xl transition shadow-2xl flex items-center justify-center gap-3 disabled:opacity-50"
+                    >
+                      <Save size={20} />
+                      {guardandoBilling ? 'Sincronizando...' : 'Guardar y Aplicar Estado de Cobro'}
+                    </button>
+                  </div>
                 </motion.div>
               )}
               {activeTab === 'support' && (

@@ -102,9 +102,15 @@ const ModuloEmpleados = ({ admin, selectedModule, refreshKey }) => {
       rolFinal = `empleado_${subRolEmpleado}`;
     }
 
+    // Determinar módulo estricto según contexto
+    let moduloFinal = selectedModule === 'informales' ? 'informal' : 'parqueadero';
+    if (subRolEmpleado === 'informales') moduloFinal = 'informal';
+    if (subRolEmpleado === 'parqueo') moduloFinal = 'parqueadero';
+    if (subRolEmpleado === 'ambos' || form.rol === 'ambos') moduloFinal = 'ambos';
+
     try {
       if (modo === 'crear') {
-        const res = await createAdmin({ ...form, rol: rolFinal });
+        const res = await createAdmin({ ...form, rol: rolFinal, modulo: moduloFinal });
         if (res.success) {
           Swal.fire('¡Éxito!', 'Empleado registrado correctamente', 'success');
           setMostrarModal(false);
@@ -113,7 +119,7 @@ const ModuloEmpleados = ({ admin, selectedModule, refreshKey }) => {
           Swal.fire('Error', res.message, 'error');
         }
       } else if (modo === 'editar') {
-        const dataUpdate = { ...form, rol: rolFinal };
+        const dataUpdate = { ...form, rol: rolFinal, modulo: moduloFinal };
         if (!dataUpdate.password) delete dataUpdate.password;
         const res = await updateAdmin(usuarioSel.id, dataUpdate);
         if (res.success) {

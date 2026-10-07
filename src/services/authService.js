@@ -56,13 +56,30 @@ export const onAuthStateChange = (callback) => {
 
 /**
  * Obtiene todos los perfiles (empleados/admins) para el Módulo de Empleados
+ * Permite filtrar por módulo ('parqueadero', 'informal') respetando superadmins o accesos globales ('ambos').
  */
-export const getAdmins = async (adminObj, moduloStr, arg3) => {
+export const getAdmins = async (adminObj, moduloStr, esDevConsole = false) => {
   try {
-    const { data, error } = await supabase
+    let query = supabase
       .from('perfiles')
       .select('*')
       .order('created_at', { ascending: false });
+
+    // Si no es desde la consola Dev o superadmin global, filtramos por módulo
+    const esSuper = adminObj?.rol === 'ambos' || adminObj?.rol === 'admin_master' || adminObj?.rol === 'superadmin' || adminObj?.rol === 'dev';
+
+    if (!esDevConsole && !esSuper && moduloStr) {
+      // Normalizar nombre de módulo ('parqueadero' o 'informal')
+      const targetModulo = moduloStr === 'informales' ? 'informal' : moduloStr;
+      // Permitir ver los que tienen ese módulo o 'ambos'/'todos'
+      query = query.or(`modulo.eq.${targetModulo},modulo.eq.ambos,modulo.eq.todos`);
+    } else if (!esDevConsole && moduloStr && esSuper) {
+      // Si el superadmin seleccionó ver un módulo específico en la vista operativa
+      const targetModulo = moduloStr === 'informales' ? 'informal' : moduloStr;
+      query = query.or(`modulo.eq.${targetModulo},modulo.eq.ambos,modulo.eq.todos`);
+    }
+
+    const { data, error } = await query;
     
     if (error) throw error;
     return { success: true, data: data || [] };
@@ -112,6 +129,7 @@ export const deleteAdmin = async (id) => {
 
 /**
  * Crea un nuevo empleado. Utiliza un cliente secundario para no cerrar la sesión del admin.
+ * Asigna automáticamente la columna 'modulo' ('parqueadero', 'informal' o 'ambos').
  */
 export const createAdmin = async (formData) => {
   try {
@@ -138,8 +156,20 @@ export const createAdmin = async (formData) => {
 
     if (authError) throw authError;
 
-    // 3. El trigger de la DB habrá creado un perfil vacío con el nuevo ID. 
-    // Lo actualizamos con los datos del formulario.
+    // Determinar módulo correspondiente según rol o parámetro explícito
+    let moduloAsignado = formData.modulo || 'parqueadero';
+    if (!formData.modulo) {
+      if (formData.rol === 'informales' || formData.rol === 'empleado_informales') {
+        moduloAsignado = 'informal';
+      } else if (formData.rol === 'ambos' || formData.rol === 'empleado_ambos' || formData.rol === 'admin_master' || formData.rol === 'superadmin' || formData.rol === 'dev') {
+        moduloAsignado = 'ambos';
+      } else {
+        moduloAsignado = 'parqueadero';
+      }
+    }
+
+    // 3. El trigger de la DB habrá creado un perfil con el nuevo ID. 
+    // Lo actualizamos con los datos del formulario incluyendo 'modulo'.
     if (authData?.user) {
       const { error: profileError } = await supabase
         .from('perfiles')
@@ -147,6 +177,7 @@ export const createAdmin = async (formData) => {
           username: formData.username.trim().toLowerCase(),
           nombre_completo: formData.nombre_completo,
           rol: formData.rol,
+          modulo: moduloAsignado,
           foto_perfil: formData.foto_perfil
         })
         .eq('id', authData.user.id);
