@@ -19,7 +19,7 @@ import DevPortal from './components/DevPortal';
 import BillingNotice from './components/BillingNotice';
 import Login from './components/Login';
 import HomePanel from './components/HomePanel';
-import { onAuthStateChange, getPerfil, logout } from './services/authService';
+import { onAuthStateChange, getPerfil, logout, getUserAllowedModules } from './services/authService';
 import { supabase } from './lib/supabase';
 import Swal from 'sweetalert2';
 import logo from '../assets/logo upar.png';
@@ -173,16 +173,48 @@ function App() {
             username: session.user.email.split('@')[0]
           };
           setAdmin(userData);
-          
+
+          const allowed = getUserAllowedModules(userData);
+
+          // Si la cuenta SOLO tiene acceso a 'parqueadero':
+          if (allowed.length === 1 && allowed[0] === 'parqueadero') {
+            setSelectedModule('parqueadero');
+            setTab('parqueadero');
+            setAppView('app');
+            localStorage.setItem('uparqueo_session', JSON.stringify({ 
+              view: 'app', 
+              module: 'parqueadero', 
+              activeTab: 'parqueadero' 
+            }));
+            return;
+          }
+
+          // Si la cuenta SOLO tiene acceso a 'informal':
+          if (allowed.length === 1 && (allowed[0] === 'informal' || allowed[0] === 'informales')) {
+            setSelectedModule('informales');
+            setTab('informales');
+            setAppView('app');
+            localStorage.setItem('uparqueo_session', JSON.stringify({ 
+              view: 'app', 
+              module: 'informales', 
+              activeTab: 'informales' 
+            }));
+            return;
+          }
+
+          // Si tiene múltiples módulos permitidos (o acceso global):
           const savedSessionStr = localStorage.getItem('uparqueo_session');
           if (savedSessionStr) {
             try {
               const savedSession = JSON.parse(savedSessionStr);
               if (savedSession.view === 'app' && savedSession.module) {
-                setSelectedModule(savedSession.module);
-                setTab(savedSession.activeTab || savedSession.module);
-                setAppView('app');
-                return;
+                const targetMod = savedSession.module === 'informales' ? 'informal' : savedSession.module;
+                if (allowed.includes(targetMod)) {
+                  setSelectedModule(savedSession.module);
+                  setTab(savedSession.activeTab || savedSession.module);
+                  setAppView('app');
+                  return;
+                }
               }
             } catch (e) {
               console.error('Error parsing session', e);
@@ -192,6 +224,7 @@ function App() {
         }
       } else {
         setAdmin(null);
+        setSelectedModule(null);
         setAppView('login');
       }
     });
@@ -326,6 +359,13 @@ function App() {
   ];
 
   const tabs = tabsConfig.filter(t => {
+    // Si la cuenta tiene módulos restringidos, ocultar módulos no permitidos
+    const allowed = getUserAllowedModules(admin);
+    if (allowed.length > 0) {
+      if (!allowed.includes('parqueadero') && t.id === 'parqueadero') return false;
+      if (!allowed.includes('informal') && (t.id === 'informales' || (t.id === 'gastos' && selectedModule !== 'parqueadero'))) return false;
+    }
+
     // Si es un rol de empleado (empieza con empleado_ o es solo empleado)
     const esEmpleado = admin?.rol?.startsWith('empleado') || admin?.rol === 'empleado';
     
@@ -334,10 +374,10 @@ function App() {
       const permitidas = ['evidencias', 'lista_negra', 'ajustes'];
       
       // Añadir el gestor principal según su subrol
-      if (admin.rol === 'empleado_parqueo' || admin.rol === 'empleado_ambos') {
+      if (admin.rol === 'empleado_parqueo' || admin.rol === 'empleado_ambos' || allowed.includes('parqueadero')) {
         permitidas.push('parqueadero');
       }
-      if (admin.rol === 'empleado_informales' || admin.rol === 'empleado_ambos' || admin.rol === 'empleado') {
+      if (admin.rol === 'empleado_informales' || admin.rol === 'empleado_ambos' || admin.rol === 'empleado' || allowed.includes('informal')) {
         permitidas.push('informales');
         permitidas.push('gastos'); // Permitimos gastos si tienen acceso a informales
       }
@@ -367,6 +407,16 @@ function App() {
   };
 
   const handleTabChange = (tabId) => {
+    const allowed = getUserAllowedModules(admin);
+    if (tabId === 'parqueadero' && allowed.length > 0 && !allowed.includes('parqueadero')) {
+      showNotification('No tienes permisos para acceder a Parqueadero', 'error');
+      return;
+    }
+    if (tabId === 'informales' && allowed.length > 0 && !allowed.includes('informal')) {
+      showNotification('No tienes permisos para acceder a Informales', 'error');
+      return;
+    }
+
     setTab(tabId);
     setMenuAbierto(false);
     // Guardar cambio de pestaña en la sesión persistente
@@ -393,6 +443,13 @@ function App() {
   };
 
   const handleSelectModule = (modulo) => {
+    const allowed = getUserAllowedModules(admin);
+    const modCheck = modulo === 'informales' ? 'informal' : modulo;
+    if (allowed.length > 0 && !allowed.includes(modCheck)) {
+      showNotification('Acceso denegado: Tu cuenta no tiene permisos para este módulo', 'error');
+      return;
+    }
+
     setSelectedModule(modulo);
     setTab(modulo);
     setAppView('app');
@@ -543,16 +600,18 @@ function App() {
                 </button>
               )}
  
-              <button 
-                onClick={() => {
-                  setAppView('home');
-                  const session = JSON.parse(localStorage.getItem('uparqueo_session') || '{}');
-                  localStorage.setItem('uparqueo_session', JSON.stringify({ ...session, view: 'home' }));
-                }}
-                className="bg-white/10 hover:bg-white/20 backdrop-blur-md p-2.5 md:px-4 md:py-2.5 rounded-xl text-[10px] font-black uppercase tracking-[0.2em] border border-white/10 transition-all flex items-center gap-2 active:scale-95"
-              >
-                <ArrowLeft size={18} /> <span className="hidden xs:block">Volver</span>
-              </button>
+              {getUserAllowedModules(admin).length > 1 && (
+                <button 
+                  onClick={() => {
+                    setAppView('home');
+                    const session = JSON.parse(localStorage.getItem('uparqueo_session') || '{}');
+                    localStorage.setItem('uparqueo_session', JSON.stringify({ ...session, view: 'home' }));
+                  }}
+                  className="bg-white/10 hover:bg-white/20 backdrop-blur-md p-2.5 md:px-4 md:py-2.5 rounded-xl text-[10px] font-black uppercase tracking-[0.2em] border border-white/10 transition-all flex items-center gap-2 active:scale-95"
+                >
+                  <ArrowLeft size={18} /> <span className="hidden xs:block">Volver</span>
+                </button>
+              )}
  
               <div 
                 onClick={() => setMostrarPerfil(true)}

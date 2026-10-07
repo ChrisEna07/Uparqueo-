@@ -4,32 +4,16 @@ import {
   Car, Store, LogOut, Shield, 
   ChevronRight, Lock, UserCheck
 } from 'lucide-react';
+import { getUserAllowedModules } from '../services/authService';
 
 const HomePanel = ({ admin, onSelectModule, onLogout }) => {
   
-  // Lógica de permisos avanzada para roles segmentados
+  // Lógica de permisos para roles segmentados y cuentas con modulos_permitidos
   const tienePermiso = (modulo) => {
-    if (!admin?.rol) return false;
-    
-    // El Admin Master o con rol 'ambos' tienen acceso total
-    if (admin.rol === 'admin_master' || admin.rol === 'ambos') return true;
-
-    // Si es un empleado (rol empieza con empleado_ o es solo empleado)
-    const esEmpleado = admin.rol.startsWith('empleado') || admin.rol === 'empleado';
-    
-    if (esEmpleado) {
-      if (admin.rol === 'empleado_ambos') return true;
-      if (admin.rol === 'empleado_parqueo') return modulo === 'parqueadero';
-      if (admin.rol === 'empleado_informales') return modulo === 'informales';
-      // Fallback a informales por defecto si solo es 'empleado'
-      return modulo === 'informales';
-    }
-
-    // Para administradores de área específicos
-    if (modulo === 'parqueadero') return admin.rol === 'parqueadero';
-    if (modulo === 'informales') return admin.rol === 'informales';
-    
-    return false;
+    if (!admin) return false;
+    const allowed = getUserAllowedModules(admin);
+    const modCheck = modulo === 'informales' ? 'informal' : modulo;
+    return allowed.includes(modCheck);
   };
 
   const modulos = [

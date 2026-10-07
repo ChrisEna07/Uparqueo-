@@ -443,20 +443,20 @@ const ModuloAjustes = ({ onActionSuccess, onDevToolsClick, onRequestNotification
       {/* Sección de Sistema y Notificaciones */}
       <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 mb-8 shadow-xl border border-gray-100 dark:border-gray-700">
         <div className="flex items-center gap-3 mb-6">
-          <div className="bg-purple-500/10 p-2 rounded-lg">
+          <div className="bg-purple-500/10 p-2 rounded-lg shrink-0">
             <Bell className="text-purple-500" size={24} />
           </div>
           <h3 className="text-xl font-bold text-gray-800 dark:text-white">Sistema y Notificaciones</h3>
         </div>
 
-        <div className="flex flex-col md:flex-row items-center justify-between gap-6">
-          <div className="flex-1">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div className="flex-1 min-w-[200px]">
             <p className="text-gray-700 dark:text-gray-300 font-bold mb-1">Alertas en tiempo real</p>
             <p className="text-xs text-gray-500 dark:text-gray-400">Habilita las notificaciones nativas para recibir alertas de pagos y eventos incluso con la pantalla apagada.</p>
           </div>
           <button 
             onClick={onRequestNotifications}
-            className="w-full md:w-auto bg-purple-600 hover:bg-purple-700 text-white px-8 py-3 rounded-xl font-black text-xs uppercase tracking-widest transition-all active:scale-95 shadow-lg shadow-purple-900/20 flex items-center justify-center gap-2"
+            className="w-full sm:w-auto shrink-0 bg-purple-600 hover:bg-purple-700 text-white px-8 py-3 rounded-xl font-black text-xs uppercase tracking-widest transition-all active:scale-95 shadow-lg shadow-purple-900/20 flex items-center justify-center gap-2"
           >
             <Bell size={18} /> Activar Notificaciones
           </button>
@@ -485,11 +485,11 @@ const ModuloAjustes = ({ onActionSuccess, onDevToolsClick, onRequestNotification
             >
               <div className="p-6">
                 <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-                  <div className="flex items-center gap-4">
-                    <div className="bg-white/20 p-3 rounded-xl backdrop-blur-sm">
+                  <div className="flex items-center gap-4 flex-1 min-w-[200px]">
+                    <div className="bg-white/20 p-3 rounded-xl backdrop-blur-sm shrink-0">
                       {getTipoIcon(t.tipo_vehiculo)}
                     </div>
-                    <div>
+                    <div className="flex-1 min-w-0">
                       <h3 className="text-2xl font-bold text-white capitalize">
                         {getTipoLabel(t.tipo_vehiculo)}
                       </h3>
@@ -502,7 +502,7 @@ const ModuloAjustes = ({ onActionSuccess, onDevToolsClick, onRequestNotification
                   </div>
 
                   {editando === t.id ? (
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-3 shrink-0 flex-wrap sm:flex-nowrap">
                       <div className="bg-white rounded-lg p-2 flex items-center">
                         {t.tipo_vehiculo !== 'limite_dias_informal' && <span className="text-gray-600 font-bold text-xl mr-2">$</span>}
                         <input 
@@ -530,7 +530,7 @@ const ModuloAjustes = ({ onActionSuccess, onDevToolsClick, onRequestNotification
                       </button>
                     </div>
                   ) : (
-                    <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-4 shrink-0 flex-wrap sm:flex-nowrap">
                       <div className="bg-white/20 backdrop-blur-sm rounded-xl px-6 py-3">
                         <div className="flex items-baseline gap-2">
                           {t.tipo_vehiculo !== 'limite_dias_informal' && <span className="text-white/80 text-lg">$</span>}
@@ -570,10 +570,10 @@ const ModuloAjustes = ({ onActionSuccess, onDevToolsClick, onRequestNotification
         className="mt-8 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-5 border border-blue-200"
       >
         <div className="flex gap-3 items-start">
-          <div className="bg-blue-500 p-2 rounded-lg">
+          <div className="bg-blue-500 p-2 rounded-lg shrink-0">
             <Info className="text-white" size={20} />
           </div>
-          <div>
+          <div className="flex-1 min-w-[200px]">
             <h4 className="font-bold text-blue-900 mb-1">Información importante</h4>
             <p className="text-sm text-blue-800">
               Los cambios en las tarifas se aplicarán de inmediato a todos los vehículos activos que aún no han salido del sistema.

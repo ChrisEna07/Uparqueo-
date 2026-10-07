@@ -4,9 +4,10 @@ import { supabase } from '../lib/supabase';
 import { 
   Shield, Key, CheckCircle, AlertCircle, RefreshCw, 
   Save, ArrowLeft, Building2, Users, PlusCircle, Check, 
-  Power, PowerOff, Building
+  Power, PowerOff, Building, UserPlus, Lock, Mail
 } from 'lucide-react';
 import { getTenantsList } from '../services/tenantService';
+import { createOrganizationAdmin } from '../services/authService';
 
 export const DevPortal = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -14,13 +15,25 @@ export const DevPortal = () => {
   const [errorMsg, setErrorMsg] = useState('');
   const [loading, setLoading] = useState(false);
 
-  // Pestaña activa: 'billing' | 'organizaciones'
+  // Pestaña activa: 'billing' | 'organizaciones' | 'cuentas'
   const [activeTab, setActiveTab] = useState('billing');
 
   // Lista dinámica de Tenants / Organizaciones
   const [tenantsList, setTenantsList] = useState([]);
   const [selectedTenantId, setSelectedTenantId] = useState('default');
   const [currentBillingRow, setCurrentBillingRow] = useState(null);
+
+  // Estados de Cuentas de Organización (Admins)
+  const [adminOrgId, setAdminOrgId] = useState('');
+  const [adminNombre, setAdminNombre] = useState('');
+  const [adminUsername, setAdminUsername] = useState('');
+  const [adminPassword, setAdminPassword] = useState('');
+  const [adminModulos, setAdminModulos] = useState(['parqueadero', 'informal']);
+  const [adminLoading, setAdminLoading] = useState(false);
+  const [adminSuccessMsg, setAdminSuccessMsg] = useState('');
+  const [adminErrorMsg, setAdminErrorMsg] = useState('');
+  const [adminsList, setAdminsList] = useState([]);
+  const [adminsListLoading, setAdminsListLoading] = useState(false);
 
   // Estados de Configuración de Cobro
   const [bannerActivo, setBannerActivo] = useState(false);
@@ -87,6 +100,7 @@ export const DevPortal = () => {
     }
     await fetchBillingData('default', currentList);
     await cargarOrganizaciones();
+    await cargarCuentasAdmins();
   };
 
   const handleKeyAuth = async (e) => {
@@ -227,8 +241,93 @@ export const DevPortal = () => {
 
       setEmpleadosCounts(counts);
       setOrganizacionesList(orgs || []);
+      if (orgs && orgs.length > 0 && !adminOrgId) {
+        setAdminOrgId(orgs[0].id);
+      }
     } catch (err) {
       console.error('Error al cargar organizaciones:', err);
+    }
+  };
+
+  // Carga de cuentas de Administradores y perfiles
+  const cargarCuentasAdmins = async () => {
+    setAdminsListLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('perfiles')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setAdminsList(data || []);
+    } catch (err) {
+      console.error('Error al cargar cuentas de organizaciones:', err);
+    } finally {
+      setAdminsListLoading(false);
+    }
+  };
+
+  const toggleAdminModulo = (mod) => {
+    if (adminModulos.includes(mod)) {
+      setAdminModulos(adminModulos.filter(m => m !== mod));
+    } else {
+      setAdminModulos([...adminModulos, mod]);
+    }
+  };
+
+  const handleCrearAdminOrganizacion = async (e) => {
+    e.preventDefault();
+    setAdminErrorMsg('');
+    setAdminSuccessMsg('');
+
+    if (!adminOrgId) {
+      setAdminErrorMsg('Debes seleccionar una Organización.');
+      return;
+    }
+    if (!adminNombre.trim()) {
+      setAdminErrorMsg('Ingresa el nombre completo del administrador.');
+      return;
+    }
+    if (!adminUsername.trim()) {
+      setAdminErrorMsg('Ingresa un nombre de usuario (username).');
+      return;
+    }
+    if (!adminPassword.trim() || adminPassword.length < 6) {
+      setAdminErrorMsg('La contraseña debe tener al menos 6 caracteres.');
+      return;
+    }
+    if (adminModulos.length === 0) {
+      setAdminErrorMsg('Debes seleccionar al menos un módulo permitido (Parqueadero o Informales).');
+      return;
+    }
+
+    setAdminLoading(true);
+
+    try {
+      const res = await createOrganizationAdmin({
+        organizacion_id: adminOrgId,
+        nombre_completo: adminNombre.trim(),
+        username: adminUsername.trim().toLowerCase(),
+        password: adminPassword.trim(),
+        modulos_permitidos: adminModulos
+      });
+
+      if (res.success) {
+        setAdminSuccessMsg(`¡Administrador @${adminUsername.trim().toLowerCase()} registrado y vinculado con éxito!`);
+        setAdminNombre('');
+        setAdminUsername('');
+        setAdminPassword('');
+        setAdminModulos(['parqueadero', 'informal']);
+        await cargarCuentasAdmins();
+        await cargarOrganizaciones();
+        setTimeout(() => setAdminSuccessMsg(''), 6000);
+      } else {
+        setAdminErrorMsg(res.message || 'Error al crear la cuenta de administrador.');
+      }
+    } catch (err) {
+      setAdminErrorMsg('Error: ' + err.message);
+    } finally {
+      setAdminLoading(false);
     }
   };
 
@@ -425,6 +524,19 @@ export const DevPortal = () => {
             }`}
           >
             <Building size={16} /> Organizaciones
+          </button>
+          <button
+            onClick={() => {
+              setActiveTab('cuentas');
+              cargarCuentasAdmins();
+            }}
+            className={`px-6 py-3 rounded-2xl font-black text-xs uppercase tracking-wider flex items-center gap-2 transition ${
+              activeTab === 'cuentas' 
+                ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20' 
+                : 'bg-gray-900 text-gray-400 hover:text-white hover:bg-gray-800'
+            }`}
+          >
+            <Users size={16} /> Cuentas de Organización
           </button>
         </div>
 
@@ -776,6 +888,272 @@ export const DevPortal = () => {
                                 {esActivo ? <PowerOff size={12} /> : <Power size={12} />}
                                 {esActivo ? 'Suspender' : 'Activar'}
                               </button>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+          </div>
+        )}
+
+        {/* ========================================================================= */}
+        {/* PESTAÑA 3: CUENTAS DE ORGANIZACIÓN (ADMINS) */}
+        {/* ========================================================================= */}
+        {activeTab === 'cuentas' && (
+          <div className="space-y-8">
+            
+            {/* Formulario de Alta de Admin de Organización */}
+            <div className="bg-gray-900/60 border border-gray-800 rounded-[2.5rem] p-8 shadow-2xl space-y-6">
+              <div className="flex items-center gap-3">
+                <div className="p-3 bg-blue-600/20 text-blue-400 rounded-2xl">
+                  <UserPlus size={24} />
+                </div>
+                <div>
+                  <h2 className="text-xl font-black text-white uppercase tracking-tight">
+                    Crear Administrador de Organización
+                  </h2>
+                  <p className="text-xs text-gray-400">
+                    Crea una cuenta administrativa vinculada a una organización con control de módulos
+                  </p>
+                </div>
+              </div>
+
+              {adminSuccessMsg && (
+                <div className="p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl flex items-center gap-3 text-emerald-400 text-xs font-bold">
+                  <CheckCircle size={18} />
+                  <span>{adminSuccessMsg}</span>
+                </div>
+              )}
+
+              {adminErrorMsg && (
+                <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-2xl flex items-center gap-3 text-red-400 text-xs font-bold">
+                  <AlertCircle size={18} />
+                  <span>{adminErrorMsg}</span>
+                </div>
+              )}
+
+              <form onSubmit={handleCrearAdminOrganizacion} className="space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* Selector de Organización */}
+                  <div className="space-y-2">
+                    <label className="text-xs font-black uppercase tracking-widest text-gray-400 block">
+                      Organización / Negocio
+                    </label>
+                    <select
+                      value={adminOrgId}
+                      onChange={(e) => setAdminOrgId(e.target.value)}
+                      className="w-full bg-gray-950 border border-gray-800 focus:border-blue-500 rounded-2xl p-4 text-white font-bold outline-none text-sm cursor-pointer"
+                    >
+                      <option value="">-- Seleccionar Organización --</option>
+                      {organizacionesList.map(org => (
+                        <option key={org.id} value={org.id}>
+                          {org.nombre} ({org.slug}) - {org.estado}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Nombre Completo */}
+                  <div className="space-y-2">
+                    <label className="text-xs font-black uppercase tracking-widest text-gray-400 block">
+                      Nombre Completo
+                    </label>
+                    <input 
+                      type="text"
+                      value={adminNombre}
+                      onChange={(e) => setAdminNombre(e.target.value)}
+                      placeholder="Ej: Juan Pérez"
+                      className="w-full bg-gray-950 border border-gray-800 focus:border-blue-500 rounded-2xl p-4 text-white font-bold outline-none text-sm"
+                    />
+                  </div>
+
+                  {/* Usuario / Username */}
+                  <div className="space-y-2">
+                    <label className="text-xs font-black uppercase tracking-widest text-gray-400 block">
+                      Usuario / Username (Login)
+                    </label>
+                    <input 
+                      type="text"
+                      value={adminUsername}
+                      onChange={(e) => setAdminUsername(e.target.value.toLowerCase().replace(/\s+/g, ''))}
+                      placeholder="Ej: adminparqueadero"
+                      className="w-full bg-gray-950 border border-gray-800 focus:border-blue-500 rounded-2xl p-4 text-white font-bold outline-none text-sm"
+                    />
+                    <p className="text-[10px] text-gray-500">
+                      Iniciará sesión con este usuario o {adminUsername ? `${adminUsername}@uparqueo.com` : 'usuario@uparqueo.com'}
+                    </p>
+                  </div>
+
+                  {/* Contraseña */}
+                  <div className="space-y-2">
+                    <label className="text-xs font-black uppercase tracking-widest text-gray-400 block">
+                      Contraseña de Acceso
+                    </label>
+                    <input 
+                      type="text"
+                      value={adminPassword}
+                      onChange={(e) => setAdminPassword(e.target.value)}
+                      placeholder="•••••••• (mínimo 6 caracteres)"
+                      className="w-full bg-gray-950 border border-gray-800 focus:border-blue-500 rounded-2xl p-4 text-white font-bold outline-none text-sm"
+                    />
+                  </div>
+                </div>
+
+                {/* Módulos con Permiso */}
+                <div className="space-y-3">
+                  <label className="text-xs font-black uppercase tracking-widest text-gray-400 block">
+                    Módulos con Permiso de Acceso
+                  </label>
+                  <div className="flex flex-wrap gap-4">
+                    <div 
+                      onClick={() => toggleAdminModulo('parqueadero')}
+                      className={`flex items-center gap-3 px-5 py-3.5 rounded-2xl border cursor-pointer select-none transition ${
+                        adminModulos.includes('parqueadero')
+                          ? 'bg-blue-600/20 border-blue-500/60 text-blue-300 font-black shadow-lg shadow-blue-500/10'
+                          : 'bg-gray-950 border-gray-800 text-gray-500 hover:text-gray-300'
+                      }`}
+                    >
+                      <div className={`w-5 h-5 rounded-lg flex items-center justify-center border transition ${
+                        adminModulos.includes('parqueadero') ? 'bg-blue-600 border-blue-400 text-white' : 'border-gray-700'
+                      }`}>
+                        {adminModulos.includes('parqueadero') && <Check size={14} />}
+                      </div>
+                      <span className="text-xs uppercase tracking-wider">🅿️ Parqueadero</span>
+                    </div>
+
+                    <div 
+                      onClick={() => toggleAdminModulo('informal')}
+                      className={`flex items-center gap-3 px-5 py-3.5 rounded-2xl border cursor-pointer select-none transition ${
+                        adminModulos.includes('informal')
+                          ? 'bg-orange-600/20 border-orange-500/60 text-orange-300 font-black shadow-lg shadow-orange-500/10'
+                          : 'bg-gray-950 border-gray-800 text-gray-500 hover:text-gray-300'
+                      }`}
+                    >
+                      <div className={`w-5 h-5 rounded-lg flex items-center justify-center border transition ${
+                        adminModulos.includes('informal') ? 'bg-orange-600 border-orange-400 text-white' : 'border-gray-700'
+                      }`}>
+                        {adminModulos.includes('informal') && <Check size={14} />}
+                      </div>
+                      <span className="text-xs uppercase tracking-wider">🏪 Informales</span>
+                    </div>
+                  </div>
+                  <p className="text-[11px] text-gray-400">
+                    {adminModulos.length === 1 
+                      ? `Esta cuenta será redirigida automáticamente al módulo de ${adminModulos[0] === 'parqueadero' ? 'Parqueadero' : 'Informales'} sin acceso al otro módulo.`
+                      : adminModulos.length === 2
+                      ? 'Esta cuenta tendrá acceso para gestionar y alternar libremente entre Parqueadero e Informales.'
+                      : 'Debes seleccionar al menos un módulo.'}
+                  </p>
+                </div>
+
+                <div className="pt-2">
+                  <button
+                    type="submit"
+                    disabled={adminLoading}
+                    className="w-full md:w-auto bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-black text-xs uppercase tracking-widest px-8 py-4 rounded-2xl transition shadow-lg shadow-blue-600/20 flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    {adminLoading ? (
+                      <RefreshCw size={16} className="animate-spin" />
+                    ) : (
+                      <PlusCircle size={16} />
+                    )}
+                    Crear Administrador de Organización
+                  </button>
+                </div>
+              </form>
+            </div>
+
+            {/* Listado de Administradores Registrados */}
+            <div className="bg-gray-900/60 border border-gray-800 rounded-[2.5rem] p-8 shadow-2xl space-y-6">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                  <h3 className="text-lg font-black text-white uppercase tracking-tight flex items-center gap-2">
+                    <Users size={20} className="text-blue-400" />
+                    Cuentas de Organización Registradas
+                  </h3>
+                  <p className="text-xs text-gray-400">
+                    Administradores y personal vinculados a organizaciones
+                  </p>
+                </div>
+                <button
+                  onClick={cargarCuentasAdmins}
+                  disabled={adminsListLoading}
+                  className="text-xs flex items-center gap-2 text-gray-400 hover:text-white font-bold bg-gray-900 px-4 py-2 rounded-xl border border-gray-800 cursor-pointer"
+                >
+                  <RefreshCw size={14} className={adminsListLoading ? 'animate-spin' : ''} />
+                  Actualizar Cuentas
+                </button>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="border-b border-gray-800 text-[10px] font-black uppercase tracking-widest text-gray-500">
+                      <th className="py-4 px-4">Usuario / Nombre</th>
+                      <th className="py-4 px-4">Organización</th>
+                      <th className="py-4 px-4">Rol</th>
+                      <th className="py-4 px-4">Módulos Permitidos</th>
+                      <th className="py-4 px-4">Registro</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-800/60 text-xs font-medium">
+                    {adminsList.length === 0 ? (
+                      <tr>
+                        <td colSpan="5" className="py-8 text-center text-gray-500 font-bold">
+                          {adminsListLoading ? 'Cargando cuentas...' : 'No hay cuentas registradas aún.'}
+                        </td>
+                      </tr>
+                    ) : (
+                      adminsList.map(userItem => {
+                        const orgAsignada = organizacionesList.find(o => o.id === userItem.organizacion_id);
+                        const mods = userItem.modulos_permitidos || 
+                          (userItem.modulo === 'ambos' ? ['parqueadero', 'informal'] : 
+                           userItem.modulo ? [userItem.modulo] : 
+                           (userItem.rol === 'admin_master' || userItem.rol === 'superadmin' ? ['parqueadero', 'informal'] : ['parqueadero']));
+
+                        return (
+                          <tr key={userItem.id} className="hover:bg-white/[0.02] transition">
+                            <td className="py-4 px-4">
+                              <div className="font-bold text-white">{userItem.nombre_completo || 'Sin nombre'}</div>
+                              <div className="text-[11px] text-gray-400 font-mono">@{userItem.username}</div>
+                            </td>
+                            <td className="py-4 px-4">
+                              {orgAsignada ? (
+                                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[11px] font-bold bg-blue-500/10 text-blue-300 border border-blue-500/20">
+                                  <Building size={12} /> {orgAsignada.nombre}
+                                </span>
+                              ) : (
+                                <span className="text-gray-500 italic text-[11px]">
+                                  {userItem.organizacion_id ? `ID: ${userItem.organizacion_id.slice(0, 8)}...` : 'Sin asignar (Global)'}
+                                </span>
+                              )}
+                            </td>
+                            <td className="py-4 px-4">
+                              <span className="uppercase text-[10px] font-black tracking-wider px-2 py-0.5 rounded-lg bg-gray-800 text-gray-300">
+                                {userItem.rol}
+                              </span>
+                            </td>
+                            <td className="py-4 px-4">
+                              <div className="flex flex-wrap gap-1.5">
+                                {mods.includes('parqueadero') && (
+                                  <span className="px-2 py-0.5 rounded-md text-[10px] font-black bg-blue-500/20 text-blue-400 border border-blue-500/30">
+                                    🅿️ Parqueadero
+                                  </span>
+                                )}
+                                {(mods.includes('informal') || mods.includes('informales')) && (
+                                  <span className="px-2 py-0.5 rounded-md text-[10px] font-black bg-orange-500/20 text-orange-400 border border-orange-500/30">
+                                    🏪 Informal
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+                            <td className="py-4 px-4 text-gray-500 text-[11px]">
+                              {userItem.created_at ? new Date(userItem.created_at).toLocaleDateString('es-CO') : '-'}
                             </td>
                           </tr>
                         );

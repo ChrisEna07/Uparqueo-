@@ -204,3 +204,121 @@ export const createAdmin = async (formData) => {
     return { success: false, message: error.message };
   }
 };
+
+/**
+ * Retorna la lista de módulos permitidos para el usuario ('parqueadero', 'informal')
+ */
+export const getUserAllowedModules = (admin) => {
+  if (!admin) return [];
+  
+  // Superadmin, dev, admin_master o rol 'ambos'
+  const rol = (admin.rol || '').toLowerCase();
+  if (rol === 'superadmin' || rol === 'dev' || rol === 'admin_master' || rol === 'ambos' || rol === 'empleado_ambos') {
+    return ['parqueadero', 'informal'];
+  }
+
+  // Si tiene modulos_permitidos explícito (array)
+  if (Array.isArray(admin.modulos_permitidos) && admin.modulos_permitidos.length > 0) {
+    return admin.modulos_permitidos.map(m => m === 'informales' ? 'informal' : m);
+  }
+
+  // Si tiene 'modulo' asignado en el perfil
+  const modulo = (admin.modulo || '').toLowerCase();
+  if (modulo === 'ambos' || modulo === 'todos') {
+    return ['parqueadero', 'informal'];
+  }
+  if (modulo === 'informal' || modulo === 'informales') {
+    return ['informal'];
+  }
+  if (modulo === 'parqueadero') {
+    return ['parqueadero'];
+  }
+
+  // Por roles tradicionales de empleado
+  if (rol === 'empleado_parqueo' || rol === 'parqueadero') {
+    return ['parqueadero'];
+  }
+  if (rol === 'empleado_informales' || rol === 'informales' || rol === 'empleado') {
+    return ['informal'];
+  }
+
+  // Default para rol 'admin'
+  return ['parqueadero'];
+};
+
+/**
+ * Crea un nuevo Administrador de Organización desde el DevPortal.
+ * Registra en Supabase Auth y crea/actualiza el perfil en public.perfiles
+ * asignando rol='admin', organizacion_id y modulos_permitidos (junto con modulo compatible).
+ */
+export const createOrganizationAdmin = async ({ organizacion_id, nombre_completo, username, password, modulos_permitidos }) => {
+  try {
+    const url = import.meta.env.VITE_SUPABASE_URL || 'https://gsytgctqtsdrwvimfkop.supabase.co';
+    const key = import.meta.env.VITE_SUPABASE_ANON_KEY || 'sb_publishable_ti60-o1v70dpDQvM73ILsQ_dhhUJv8O';
+
+    const secondarySupabase = createClient(url, key, {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+        detectSessionInUrl: false
+      }
+    });
+
+    const cleanUsername = username.trim().toLowerCase();
+    const email = `${cleanUsername}@uparqueo.com`;
+
+    // 1. Registrar usuario en Supabase Auth
+    const { data: authData, error: authError } = await secondarySupabase.auth.signUp({
+      email,
+      password: password.trim()
+    });
+
+    if (authError) throw authError;
+    if (!authData?.user) throw new Error("No se pudo crear el usuario en autenticación.");
+
+    // 2. Determinar columna 'modulo' compatible
+    const hasParqueo = modulos_permitidos.includes('parqueadero');
+    const hasInformal = modulos_permitidos.includes('informal') || modulos_permitidos.includes('informales');
+    
+    let moduloCompat = 'parqueadero';
+    if (hasParqueo && hasInformal) {
+      moduloCompat = 'ambos';
+    } else if (hasInformal) {
+      moduloCompat = 'informal';
+    } else {
+      moduloCompat = 'parqueadero';
+    }
+
+    // 3. Upsert en public.perfiles
+    const profilePayload = {
+      id: authData.user.id,
+      username: cleanUsername,
+      nombre_completo: nombre_completo.trim(),
+      rol: 'admin',
+      modulo: moduloCompat,
+      organizacion_id: organizacion_id || null,
+      modulos_permitidos: modulos_permitidos
+    };
+
+    let { error: profileError } = await supabase
+      .from('perfiles')
+      .upsert(profilePayload, { onConflict: 'id' });
+
+    // Si la columna modulos_permitidos no existiera todavía en la base de datos, reintentar sin ella
+    if (profileError && (profileError.message?.includes('modulos_permitidos') || profileError.code === '42703')) {
+      delete profilePayload.modulos_permitidos;
+      const retry = await supabase
+        .from('perfiles')
+        .upsert(profilePayload, { onConflict: 'id' });
+      profileError = retry.error;
+    }
+
+    if (profileError) throw profileError;
+
+    return { success: true, user: authData.user };
+  } catch (error) {
+    console.error('Error en createOrganizationAdmin:', error);
+    return { success: false, message: error.message };
+  }
+};
+
