@@ -17,7 +17,7 @@ export const BillingNotice = ({ admin, selectedModule, onDevRequest }) => {
   const DEV_KEY = import.meta.env.VITE_DEV_ADMIN_KEY || 'ChrizDev07';
 
   // Identificar los tenant_id potenciales que aplican al usuario actual
-  const activeTenantId = admin?.tenant_id || admin?.business_id || null;
+  const activeTenantId = admin?.organizacion_id || admin?.tenant_id || admin?.business_id || null;
   const currentModulo = selectedModule || (admin?.modulo === 'informal' ? 'informales' : 'parqueadero');
 
   useEffect(() => {
@@ -47,12 +47,15 @@ export const BillingNotice = ({ admin, selectedModule, onDevRequest }) => {
 
         if (data && data.length > 0) {
           let matched = null;
+          // 1. Coincidencia por organizacion_id o tenant_id exacto
           if (activeTenantId) {
-            matched = data.find(b => b.tenant_id === activeTenantId);
+            matched = data.find(b => b.organizacion_id === activeTenantId || b.tenant_id === activeTenantId);
           }
+          // 2. Coincidencia por módulo activo
           if (!matched && currentModulo) {
             matched = data.find(b => b.tenant_id === currentModulo);
           }
+          // 3. Fallback a configuración global 'default'
           if (!matched) {
             matched = data.find(b => b.tenant_id === 'default');
           }
@@ -297,15 +300,18 @@ export const BillingNotice = ({ admin, selectedModule, onDevRequest }) => {
 
   if (billing.tipo_aviso === 'banner') {
     return (
-      <aside aria-label="Aviso de facturación" className="relative z-[9999] bg-gradient-to-r from-amber-600 via-amber-700 to-amber-800 text-white px-5 py-3.5 shadow-xl flex items-center justify-between text-xs md:text-sm font-medium">
-        <div className="flex items-center gap-3 pr-4">
-          <div className="p-1.5 bg-black/20 rounded-lg shrink-0">
-            <AlertTriangle className="w-5 h-5 text-amber-200" />
+      <aside 
+        aria-label="Aviso de facturación" 
+        className="sticky top-0 z-[99990] w-full bg-amber-500/90 text-white px-4 py-2 flex justify-between items-center shadow-md backdrop-blur-sm"
+      >
+        <div className="flex items-center gap-3 pr-4 overflow-hidden">
+          <div className="p-1 bg-black/20 rounded-md shrink-0">
+            <AlertTriangle className="w-4 h-4 text-amber-100" />
           </div>
-          <div className="flex flex-col md:flex-row md:items-center gap-1 md:gap-3">
-            <span className="font-bold">{billing.mensaje}</span>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs md:text-sm">
+            <span className="font-bold tracking-tight">{billing.mensaje}</span>
             {billing.datos_pago && (
-              <span className="text-amber-100 text-xs font-mono bg-black/20 px-2 py-0.5 rounded">
+              <span className="text-amber-100 text-xs font-mono bg-black/25 px-2 py-0.5 rounded border border-amber-400/20">
                 {billing.datos_pago}
               </span>
             )}
@@ -313,10 +319,10 @@ export const BillingNotice = ({ admin, selectedModule, onDevRequest }) => {
         </div>
         <button 
           onClick={handleDismiss}
-          className="p-1.5 hover:bg-black/20 rounded-xl transition-colors shrink-0 text-amber-100 hover:text-white"
+          className="p-1 hover:bg-black/20 rounded-lg transition-colors shrink-0 text-amber-100 hover:text-white ml-2"
           title="Cerrar aviso"
         >
-          <X className="w-5 h-5" />
+          <X className="w-4 h-4" />
         </button>
       </aside>
     );
