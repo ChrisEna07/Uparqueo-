@@ -7,9 +7,10 @@ import {
   ChevronRight, Key, Car, Store, Briefcase,
   UserPlus, UserCheck, ShieldCheck, Edit2, Eye, EyeOff, Clock,
   LayoutGrid, MessageSquare, ShieldAlert, Search, ArrowLeft, Send, Menu,
-  TrendingDown, CreditCard, Save, CheckCircle
+  TrendingDown, CreditCard, Save, CheckCircle, Building2
 } from 'lucide-react';
 import { getAdmins, createAdmin, deleteAdmin, updateAdmin } from '../services/authService';
+import { getTenantsList } from '../services/tenantService';
 import ModuloSoporte from './ModuloSoporte';
 import Swal from 'sweetalert2';
 
@@ -27,6 +28,8 @@ const DevTools = ({ onClose, currentAdmin, onAction }) => {
   const [showPassword, setShowPassword] = useState(false);
   
   // Estados para Cobro / Suscripción
+  const [tenantsList, setTenantsList] = useState([]);
+  const [selectedTenantId, setSelectedTenantId] = useState('default');
   const [billingData, setBillingData] = useState({
     banner_activo: false,
     tipo_aviso: 'modal',
@@ -46,23 +49,45 @@ const DevTools = ({ onClose, currentAdmin, onAction }) => {
 
   useEffect(() => {
     cargarAdmins();
-    cargarBilling();
+    inicializarBilling();
   }, []);
 
-  const cargarBilling = async () => {
+  const inicializarBilling = async () => {
+    const res = await getTenantsList();
+    if (res.success && res.data.length > 0) {
+      setTenantsList(res.data);
+    }
+    await cargarBilling('default');
+  };
+
+  const cargarBilling = async (tenantId = selectedTenantId) => {
     try {
       const { data, error } = await supabase
         .from('tenant_billing')
         .select('*')
-        .eq('tenant_id', 'default')
+        .eq('tenant_id', tenantId)
         .maybeSingle();
 
       if (data) {
         setBillingData(data);
+      } else {
+        setBillingData({
+          banner_activo: false,
+          tipo_aviso: 'modal',
+          es_bloqueante: false,
+          mensaje: 'Su mensualidad ha vencido. Por favor realice el pago para continuar utilizando el sistema.',
+          datos_pago: 'Nequi / Daviplata: 300 000 0000 - A nombre de: Administrador'
+        });
       }
     } catch (err) {
       console.error("Error al cargar billing:", err);
     }
+  };
+
+  const handleTenantChange = async (e) => {
+    const newTenantId = e.target.value;
+    setSelectedTenantId(newTenantId);
+    await cargarBilling(newTenantId);
   };
 
   const guardarBilling = async () => {
@@ -71,7 +96,7 @@ const DevTools = ({ onClose, currentAdmin, onAction }) => {
       const { error } = await supabase
         .from('tenant_billing')
         .upsert({
-          tenant_id: 'default',
+          tenant_id: selectedTenantId,
           banner_activo: billingData.banner_activo,
           tipo_aviso: billingData.tipo_aviso,
           es_bloqueante: billingData.es_bloqueante,
@@ -81,7 +106,7 @@ const DevTools = ({ onClose, currentAdmin, onAction }) => {
         }, { onConflict: 'tenant_id' });
 
       if (error) throw error;
-      Swal.fire('¡Configuración Guardada!', 'El estado de suscripción fue sincronizado en tiempo real.', 'success');
+      Swal.fire('¡Configuración Guardada!', `El estado de cobro para el tenant [${selectedTenantId}] fue sincronizado en tiempo real.`, 'success');
     } catch (err) {
       Swal.fire('Error', 'No se pudo guardar la configuración: ' + err.message, 'error');
     } finally {
@@ -472,6 +497,27 @@ const DevTools = ({ onClose, currentAdmin, onAction }) => {
                   </div>
 
                   <div className="bg-gray-900/60 border border-gray-800 rounded-[2.5rem] p-8 space-y-6">
+                    {/* SELECTOR DE TENANT / CLIENTE */}
+                    <div className="p-5 bg-blue-950/20 border border-blue-500/30 rounded-2xl space-y-2">
+                      <label className="text-xs font-black text-blue-400 uppercase tracking-widest flex items-center gap-2">
+                        <Building2 size={16} /> Seleccionar Cliente / Tenant
+                      </label>
+                      <select
+                        value={selectedTenantId}
+                        onChange={handleTenantChange}
+                        className="w-full bg-gray-950 border border-gray-700 rounded-xl px-4 py-3.5 text-sm text-white font-bold outline-none focus:border-blue-500"
+                      >
+                        {tenantsList.map(t => (
+                          <option key={t.id} value={t.id}>
+                            {t.nombre} {t.tipo === 'global' ? '★ (Afecta a Todos)' : `[ID: ${t.id.substring(0,8)}...]`}
+                          </option>
+                        ))}
+                      </select>
+                      <p className="text-[11px] text-gray-400 italic">
+                        Configurando actualmente: <span className="font-mono text-blue-300 font-bold">{selectedTenantId}</span>
+                      </p>
+                    </div>
+
                     {/* Switch de activación */}
                     <div className="flex items-center justify-between p-5 bg-gray-950/80 rounded-2xl border border-gray-800">
                       <div>

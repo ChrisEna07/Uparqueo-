@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
-import { Shield, Key, CheckCircle, AlertCircle, RefreshCw, Save, ArrowLeft } from 'lucide-react';
+import { Shield, Key, CheckCircle, AlertCircle, RefreshCw, Save, ArrowLeft, Building2 } from 'lucide-react';
+import { getTenantsList } from '../services/tenantService';
 
 export const DevPortal = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -8,7 +9,11 @@ export const DevPortal = () => {
   const [errorMsg, setErrorMsg] = useState('');
   const [loading, setLoading] = useState(false);
 
-  // Estados de Configuración de Cobro
+  // Lista dinámica de Tenants / Negocios
+  const [tenantsList, setTenantsList] = useState([]);
+  const [selectedTenantId, setSelectedTenantId] = useState('default');
+
+  // Estados de Configuración de Cobro para el tenant seleccionado
   const [bannerActivo, setBannerActivo] = useState(false);
   const [tipoAviso, setTipoAviso] = useState('modal');
   const [esBloqueante, setEsBloqueante] = useState(false);
@@ -24,7 +29,7 @@ export const DevPortal = () => {
     const devAuth = sessionStorage.getItem('dev_authenticated') === 'true';
     if (devAuth) {
       setIsAuthenticated(true);
-      fetchBillingData();
+      inicializarPortal();
       return;
     }
 
@@ -42,7 +47,7 @@ export const DevPortal = () => {
           if (perfil && (perfil.rol === 'superadmin' || perfil.rol === 'dev' || perfil.rol === 'admin_master' || perfil.rol === 'ambos')) {
             setIsAuthenticated(true);
             sessionStorage.setItem('dev_authenticated', 'true');
-            fetchBillingData();
+            inicializarPortal();
           }
         }
       } catch (e) {
@@ -53,39 +58,60 @@ export const DevPortal = () => {
     checkRole();
   }, []);
 
-  const handleKeyAuth = (e) => {
+  const inicializarPortal = async () => {
+    const res = await getTenantsList();
+    if (res.success && res.data.length > 0) {
+      setTenantsList(res.data);
+    }
+    await fetchBillingData('default');
+  };
+
+  const handleKeyAuth = async (e) => {
     e.preventDefault();
     if (adminKeyInput.trim() === DEV_MASTER_KEY) {
       setIsAuthenticated(true);
       sessionStorage.setItem('dev_authenticated', 'true');
       setErrorMsg('');
-      fetchBillingData();
+      inicializarPortal();
     } else {
       setErrorMsg('Clave Maestra de Desarrollador incorrecta.');
     }
   };
 
-  const fetchBillingData = async () => {
+  const fetchBillingData = async (tenantId) => {
     setLoading(true);
     try {
       const { data, error } = await supabase
         .from('tenant_billing')
         .select('*')
-        .eq('tenant_id', 'default')
+        .eq('tenant_id', tenantId)
         .maybeSingle();
 
       if (data) {
         setBannerActivo(data.banner_activo);
         setTipoAviso(data.tipo_aviso || 'modal');
         setEsBloqueante(data.es_bloqueante);
-        setMensaje(data.mensaje);
-        setDatosPago(data.datos_pago);
+        setMensaje(data.mensaje || 'Su mensualidad ha vencido. Por favor realice el pago para continuar utilizando el sistema.');
+        setDatosPago(data.datos_pago || 'Nequi / Daviplata: 300 000 0000 - A nombre de: Administrador');
+      } else {
+        // Inicializar con valores por defecto listos para configurar si no existe
+        setBannerActivo(false);
+        setTipoAviso('modal');
+        setEsBloqueante(false);
+        setMensaje('Su mensualidad ha vencido. Por favor realice el pago para continuar utilizando el sistema.');
+        setDatosPago('Nequi / Daviplata: 300 000 0000 - A nombre de: Administrador');
       }
     } catch (err) {
       console.error(err);
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleTenantChange = async (e) => {
+    const newTenantId = e.target.value;
+    setSelectedTenantId(newTenantId);
+    await fetchBillingData(newTenantId);
   };
 
   const handleSaveBilling = async () => {
@@ -97,7 +123,7 @@ export const DevPortal = () => {
       const { error } = await supabase
         .from('tenant_billing')
         .upsert({
-          tenant_id: 'default',
+          tenant_id: selectedTenantId,
           banner_activo: bannerActivo,
           tipo_aviso: tipoAviso,
           es_bloqueante: esBloqueante,
@@ -209,12 +235,15 @@ export const DevPortal = () => {
 
         {/* Sección de Facturación y Cobro */}
         <div className="bg-gray-900/60 border border-gray-800 rounded-[2.5rem] p-8 shadow-2xl space-y-6">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xl font-black text-white uppercase tracking-tight">
-              Control de Cobro Mensual (Tenant Global)
-            </h2>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <h2 className="text-xl font-black text-white uppercase tracking-tight">
+                Control de Cobro Mensual por Tenant
+              </h2>
+              <p className="text-xs text-gray-400">Selecciona el negocio específico a configurar o bloquear</p>
+            </div>
             <button 
-              onClick={fetchBillingData}
+              onClick={() => fetchBillingData(selectedTenantId)}
               disabled={loading}
               className="text-xs flex items-center gap-2 text-gray-400 hover:text-white font-bold"
             >
@@ -223,12 +252,33 @@ export const DevPortal = () => {
             </button>
           </div>
 
+          {/* SELECTOR DE TENANT / CLIENTE */}
+          <div className="p-5 bg-blue-950/20 border border-blue-500/30 rounded-2xl space-y-2">
+            <label className="text-xs font-black text-blue-400 uppercase tracking-widest flex items-center gap-2">
+              <Building2 size={16} /> Seleccionar Cliente / Tenant
+            </label>
+            <select
+              value={selectedTenantId}
+              onChange={handleTenantChange}
+              className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3.5 text-sm text-white font-bold outline-none focus:border-blue-500"
+            >
+              {tenantsList.map(t => (
+                <option key={t.id} value={t.id}>
+                  {t.nombre} {t.tipo === 'global' ? '★ (Afecta a Todos)' : `[ID: ${t.id.substring(0,8)}...]`}
+                </option>
+              ))}
+            </select>
+            <p className="text-[11px] text-gray-400 italic">
+              Configurando actualmente: <span className="font-mono text-blue-300 font-bold">{selectedTenantId}</span>
+            </p>
+          </div>
+
           {/* Switch Activar Aviso */}
           <div className="flex items-center justify-between p-5 bg-gray-950/80 rounded-2xl border border-gray-800">
             <div>
               <span className="font-black text-white text-base block">Activar Advertencia / Bloqueo</span>
               <span className="text-xs text-gray-400 font-medium">
-                Si está apagado, ningún usuario verá avisos ni restricciones de pago.
+                Si está apagado, este tenant no verá avisos ni restricciones de pago.
               </span>
             </div>
             <label className="relative inline-flex items-center cursor-pointer">
@@ -305,7 +355,7 @@ export const DevPortal = () => {
           {saveSuccess && (
             <div className="p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl text-emerald-400 text-xs flex items-center gap-2">
               <CheckCircle size={18} className="shrink-0" />
-              <span>Configuración guardada y sincronizada en tiempo real con la app.</span>
+              <span>Configuración guardada para el tenant [{selectedTenantId}] y sincronizada en tiempo real.</span>
             </div>
           )}
 
@@ -322,7 +372,7 @@ export const DevPortal = () => {
             className="w-full bg-blue-600 hover:bg-blue-700 font-black text-white text-sm uppercase tracking-widest py-5 rounded-2xl transition shadow-xl shadow-blue-900/30 flex items-center justify-center gap-3 disabled:opacity-50"
           >
             <Save size={20} />
-            {loading ? 'Guardando Cambios...' : 'Guardar y Aplicar Estado de Cobro'}
+            {loading ? 'Guardando Cambios...' : `Guardar y Aplicar Estado para Tenant (${selectedTenantId.substring(0,8)}...)`}
           </button>
         </div>
 

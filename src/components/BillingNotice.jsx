@@ -3,13 +3,20 @@ import { supabase } from '../lib/supabase';
 import { AlertTriangle, Lock, X, Shield, Key } from 'lucide-react';
 import Swal from 'sweetalert2';
 
-export const BillingNotice = ({ admin, onDevRequest }) => {
+export const BillingNotice = ({ admin, selectedModule, onDevRequest }) => {
   const [billing, setBilling] = useState(null);
   const [dismissed, setDismissed] = useState(false);
   const [devBypass, setDevBypass] = useState(false);
   const [lockClicks, setLockClicks] = useState(0);
 
   const DEV_KEY = import.meta.env.VITE_DEV_ADMIN_KEY || 'ChrizDev07';
+
+  // Identificar los tenant_id potenciales que aplican al usuario actual
+  // 1. Su propio tenant_id / negocio_id si está asignado a un puesto
+  // 2. Su módulo operativo ('parqueadero' o 'informales')
+  // 3. El comodín global 'default'
+  const activeTenantId = admin?.tenant_id || admin?.business_id || null;
+  const currentModulo = selectedModule || (admin?.modulo === 'informal' ? 'informales' : 'parqueadero');
 
   useEffect(() => {
     // Si ya se activó el bypass de desarrollador en esta pestaña
@@ -26,19 +33,36 @@ export const BillingNotice = ({ admin, onDevRequest }) => {
 
     const fetchBilling = async () => {
       try {
+        // Consultar configuraciones de cobro activas
         const { data, error } = await supabase
           .from('tenant_billing')
           .select('*')
-          .eq('tenant_id', 'default')
-          .maybeSingle();
+          .eq('banner_activo', true);
 
         if (error) {
           console.warn('tenant_billing aún no configurado o sin permisos:', error.message);
           return;
         }
 
-        if (data) {
-          setBilling(data);
+        if (data && data.length > 0) {
+          // Evaluar coincidencia por prioridad:
+          // 1. Tenant específico del cliente (si aplica)
+          // 2. Módulo específico ('parqueadero' o 'informales')
+          // 3. Tenant global ('default')
+          let matched = null;
+          if (activeTenantId) {
+            matched = data.find(b => b.tenant_id === activeTenantId);
+          }
+          if (!matched && currentModulo) {
+            matched = data.find(b => b.tenant_id === currentModulo);
+          }
+          if (!matched) {
+            matched = data.find(b => b.tenant_id === 'default');
+          }
+
+          setBilling(matched || null);
+        } else {
+          setBilling(null);
         }
       } catch (err) {
         console.error('Error fetching tenant_billing:', err);
@@ -53,14 +77,8 @@ export const BillingNotice = ({ admin, onDevRequest }) => {
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'tenant_billing' },
-        (payload) => {
-          if (payload.new) {
-            setBilling(payload.new);
-            if (payload.new.es_bloqueante && sessionStorage.getItem('dev_bypass') !== 'true') {
-              setDismissed(false);
-              sessionStorage.removeItem('billing_dismissed');
-            }
-          }
+        () => {
+          fetchBilling();
         }
       )
       .subscribe();
@@ -68,7 +86,7 @@ export const BillingNotice = ({ admin, onDevRequest }) => {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, []);
+  }, [admin, selectedModule, activeTenantId, currentModulo]);
 
   // 1. REGLA CRÍTICA 1: Excluir totalmente la ruta del portal de desarrollador
   const currentPath = window.location.pathname.toLowerCase();
