@@ -1,13 +1,24 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { AlertTriangle, Lock, X } from 'lucide-react';
+import { AlertTriangle, Lock, X, Shield, Key } from 'lucide-react';
+import Swal from 'sweetalert2';
 
-export const BillingNotice = () => {
+export const BillingNotice = ({ admin, onDevRequest }) => {
   const [billing, setBilling] = useState(null);
   const [dismissed, setDismissed] = useState(false);
+  const [devBypass, setDevBypass] = useState(false);
+  const [lockClicks, setLockClicks] = useState(0);
+
+  const DEV_KEY = import.meta.env.VITE_DEV_ADMIN_KEY || 'ChrizDev07';
 
   useEffect(() => {
-    // Si ya fue descartado en esta sesión y no es bloqueante, no volver a mostrar
+    // Si ya se activó el bypass de desarrollador en esta pestaña
+    const bypassActive = sessionStorage.getItem('dev_bypass') === 'true';
+    if (bypassActive) {
+      setDevBypass(true);
+    }
+
+    // Si ya fue descartado en esta sesión y no es bloqueante
     const isDismissed = sessionStorage.getItem('billing_dismissed') === 'true';
     if (isDismissed) {
       setDismissed(true);
@@ -45,7 +56,7 @@ export const BillingNotice = () => {
         (payload) => {
           if (payload.new) {
             setBilling(payload.new);
-            if (payload.new.es_bloqueante) {
+            if (payload.new.es_bloqueante && sessionStorage.getItem('dev_bypass') !== 'true') {
               setDismissed(false);
               sessionStorage.removeItem('billing_dismissed');
             }
@@ -59,20 +70,124 @@ export const BillingNotice = () => {
     };
   }, []);
 
+  // 1. REGLA CRÍTICA 1: Excluir totalmente la ruta del portal de desarrollador
+  const currentPath = window.location.pathname.toLowerCase();
+  if (currentPath === '/dev-portal' || currentPath.startsWith('/dev-portal/')) {
+    return null;
+  }
+
+  // 2. REGLA CRÍTICA 2: Bypass para desarrollador activo en la sesión actual
+  if (devBypass) {
+    return null;
+  }
+
+  // Bypass si el usuario autenticado tiene rol de SuperAdmin / Dev
+  const esSuperAdmin = admin?.rol === 'superadmin' || 
+                       admin?.rol === 'dev' || 
+                       admin?.rol === 'admin_master';
+
   if (!billing || !billing.banner_activo) return null;
   if (!billing.es_bloqueante && dismissed) return null;
 
-  // 1. CASO BLOQUEANTE TOTAL (Sin botón X, modal a pantalla completa con backdrop estricto)
+  // Manejador del Backdoor / Desbloqueo de Emergencia para Dev
+  const handleEmergencyUnlock = async () => {
+    const { value: password } = await Swal.fire({
+      title: 'Acceso de Desarrollador',
+      text: 'Ingrese la clave maestra para levantar el bloqueo:',
+      input: 'password',
+      inputPlaceholder: 'Clave maestra...',
+      showCancelButton: true,
+      confirmButtonText: 'Desbloquear',
+      cancelButtonText: 'Cancelar',
+      confirmButtonColor: '#2563EB',
+      background: '#030712',
+      color: '#fff'
+    });
+
+    if (password === DEV_KEY) {
+      sessionStorage.setItem('dev_bypass', 'true');
+      sessionStorage.setItem('dev_authenticated', 'true');
+      setDevBypass(true);
+      Swal.fire({
+        title: 'Bloqueo Levantado',
+        text: '¿Deseas ingresar al Panel de Desarrollador ahora?',
+        icon: 'success',
+        showCancelButton: true,
+        confirmButtonText: 'Ir a /dev-portal',
+        cancelButtonText: 'Permanecer aquí',
+        confirmButtonColor: '#2563EB',
+        background: '#030712',
+        color: '#fff'
+      }).then((result) => {
+        if (result.isConfirmed) {
+          window.location.href = '/dev-portal';
+        }
+      });
+    } else if (password) {
+      Swal.fire({
+        title: 'Error',
+        text: 'Clave maestra incorrecta.',
+        icon: 'error',
+        background: '#030712',
+        color: '#fff'
+      });
+    }
+  };
+
+  // Manejador de clics repetidos sobre el ícono del candado (Backdoor secreto de 5 toques)
+  const handleLockClick = () => {
+    const nextCount = lockClicks + 1;
+    if (nextCount >= 5) {
+      setLockClicks(0);
+      handleEmergencyUnlock();
+    } else {
+      setLockClicks(nextCount);
+      setTimeout(() => setLockClicks(0), 3000);
+    }
+  };
+
+  // 3. Si el usuario actual es SuperAdmin/Dev pero el bloqueo está activo,
+  // NO le bloqueamos la pantalla, se lo mostramos como un aviso informativo flotante
+  if (esSuperAdmin && billing.es_bloqueante) {
+    if (dismissed) return null;
+    return (
+      <aside aria-label="Aviso de administrador" className="fixed bottom-4 right-4 z-[999990] bg-red-950/90 border border-red-500/50 rounded-2xl p-4 text-white shadow-2xl backdrop-blur-md max-w-sm animate-fade-in">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-center gap-2 text-red-400 font-bold text-xs uppercase tracking-wider">
+            <Shield size={16} /> Modo SuperAdmin (Bloqueo Activo)
+          </div>
+          <button 
+            onClick={() => setDismissed(true)} 
+            className="text-gray-400 hover:text-white p-1"
+          >
+            <X size={14} />
+          </button>
+        </div>
+        <p className="text-xs text-gray-300 mt-2">
+          El sistema está bloqueando usuarios operativos. Puedes apagarlo en <a href="/dev-portal" className="text-blue-400 underline font-bold">/dev-portal</a>.
+        </p>
+      </aside>
+    );
+  }
+
+  // 4. CASO BLOQUEANTE TOTAL (Sin botón X, modal a pantalla completa con backdrop estricto)
   if (billing.es_bloqueante) {
     return (
       <div 
-        className="fixed inset-0 z-[999999] flex items-center justify-center bg-black/95 backdrop-blur-xl p-4 select-none"
+        className="fixed inset-0 z-[999990] flex items-center justify-center bg-black/95 backdrop-blur-xl p-4 select-none"
         style={{ pointerEvents: 'all' }}
       >
         <div className="bg-gray-950 border-2 border-red-600/60 rounded-[2.5rem] max-w-lg w-full p-8 text-white shadow-[0_0_80px_rgba(220,38,38,0.4)] text-center animate-fade-in relative">
-          <div className="w-20 h-20 bg-red-600/20 text-red-500 rounded-3xl flex items-center justify-center mx-auto mb-6 border border-red-500/40 shadow-xl shadow-red-950">
+          
+          {/* Ícono interactivo: 5 toques activan el prompt de rescate del Dev */}
+          <button 
+            type="button"
+            onClick={handleLockClick}
+            className="w-20 h-20 bg-red-600/20 text-red-500 rounded-3xl flex items-center justify-center mx-auto mb-6 border border-red-500/40 shadow-xl shadow-red-950 cursor-pointer active:scale-90 transition-transform"
+            title="Soporte del Sistema"
+          >
             <Lock className="w-10 h-10 animate-pulse" />
-          </div>
+          </button>
           
           <h2 className="text-3xl font-black text-white tracking-tight uppercase mb-3">
             Servicio Suspendido
@@ -91,15 +206,27 @@ export const BillingNotice = () => {
             </pre>
           </div>
 
-          <p className="text-[11px] text-gray-500 font-bold uppercase tracking-wider">
+          <p className="text-[11px] text-gray-500 font-bold uppercase tracking-wider mb-6">
             Una vez realizado el abono, notifique a soporte técnico para reactivar el acceso inmediatamente.
           </p>
+
+          {/* BACKDOOR DISCRETO PARA EL DESARROLLADOR */}
+          <div className="pt-2 border-t border-gray-900 flex justify-between items-center text-[10px] text-gray-600">
+            <span>Uparqueo Security Engine</span>
+            <button 
+              type="button"
+              onClick={handleEmergencyUnlock}
+              className="hover:text-gray-400 font-mono text-[10px] underline decoration-dotted transition-colors flex items-center gap-1"
+            >
+              <Key size={10} /> Acceso Técnico
+            </button>
+          </div>
         </div>
       </div>
     );
   }
 
-  // 2. CASO NO BLOQUEANTE (Banner superior o modal informativo con botón X)
+  // 5. CASO NO BLOQUEANTE (Banner superior o modal informativo con botón X)
   const handleDismiss = () => {
     setDismissed(true);
     sessionStorage.setItem('billing_dismissed', 'true');
@@ -166,4 +293,5 @@ export const BillingNotice = () => {
     </div>
   );
 };
+
 export default BillingNotice;

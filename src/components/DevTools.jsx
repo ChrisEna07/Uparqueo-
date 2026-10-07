@@ -156,7 +156,7 @@ const DevTools = ({ onClose, currentAdmin, onAction }) => {
   ];
 
   return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center p-0 md:p-4 lg:p-8">
+    <div className="fixed inset-0 z-[1000000] flex items-center justify-center p-0 md:p-4 lg:p-8">
       <motion.div 
         initial={{ opacity: 0, scale: 0.95, y: 20 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}

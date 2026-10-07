@@ -423,7 +423,7 @@ function App() {
   if (appView === 'login') {
     return (
       <>
-        <BillingNotice />
+        <BillingNotice admin={admin} onDevRequest={activarDevTools} />
         <Login onLoginSuccess={handleLogin} onDevRequest={activarDevTools} />
         <AnimatePresence>
           {mostrarDevTools && (
@@ -441,7 +441,7 @@ function App() {
   if (appView === 'home') {
     return (
       <>
-        <BillingNotice />
+        <BillingNotice admin={admin} onDevRequest={activarDevTools} />
         <HomePanel 
           admin={admin} 
           onSelectModule={handleSelectModule} 
@@ -462,7 +462,7 @@ function App() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-950 dark:to-gray-900 text-gray-900 dark:text-gray-100 flex flex-col transition-colors duration-300">
-      <BillingNotice />
+      <BillingNotice admin={admin} onDevRequest={activarDevTools} />
       <AnimatePresence>
         {notification && (
           <motion.div
