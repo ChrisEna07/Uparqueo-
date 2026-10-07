@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { AlertTriangle, Lock, X, Shield, Key } from 'lucide-react';
-import Swal from 'sweetalert2';
+import { AlertTriangle, Lock, X, Shield, Key, ArrowRight, ShieldCheck, Check } from 'lucide-react';
 
 export const BillingNotice = ({ admin, selectedModule, onDevRequest }) => {
   const [billing, setBilling] = useState(null);
@@ -9,12 +8,15 @@ export const BillingNotice = ({ admin, selectedModule, onDevRequest }) => {
   const [devBypass, setDevBypass] = useState(false);
   const [lockClicks, setLockClicks] = useState(0);
 
+  // ESTADO LOCAL DE REACT PARA DESBLOQUEO TÉCNICO (Sin SweetAlert ni portales externos)
+  const [showAuthForm, setShowAuthForm] = useState(false);
+  const [inputKey, setInputKey] = useState('');
+  const [authError, setAuthError] = useState('');
+  const [authSuccess, setAuthSuccess] = useState(false);
+
   const DEV_KEY = import.meta.env.VITE_DEV_ADMIN_KEY || 'ChrizDev07';
 
   // Identificar los tenant_id potenciales que aplican al usuario actual
-  // 1. Su propio tenant_id / negocio_id si está asignado a un puesto
-  // 2. Su módulo operativo ('parqueadero' o 'informales')
-  // 3. El comodín global 'default'
   const activeTenantId = admin?.tenant_id || admin?.business_id || null;
   const currentModulo = selectedModule || (admin?.modulo === 'informal' ? 'informales' : 'parqueadero');
 
@@ -33,7 +35,6 @@ export const BillingNotice = ({ admin, selectedModule, onDevRequest }) => {
 
     const fetchBilling = async () => {
       try {
-        // Consultar configuraciones de cobro activas
         const { data, error } = await supabase
           .from('tenant_billing')
           .select('*')
@@ -45,10 +46,6 @@ export const BillingNotice = ({ admin, selectedModule, onDevRequest }) => {
         }
 
         if (data && data.length > 0) {
-          // Evaluar coincidencia por prioridad:
-          // 1. Tenant específico del cliente (si aplica)
-          // 2. Módulo específico ('parqueadero' o 'informales')
-          // 3. Tenant global ('default')
           let matched = null;
           if (activeTenantId) {
             matched = data.find(b => b.tenant_id === activeTenantId);
@@ -107,48 +104,21 @@ export const BillingNotice = ({ admin, selectedModule, onDevRequest }) => {
   if (!billing || !billing.banner_activo) return null;
   if (!billing.es_bloqueante && dismissed) return null;
 
-  // Manejador del Backdoor / Desbloqueo de Emergencia para Dev
-  const handleEmergencyUnlock = async () => {
-    const { value: password } = await Swal.fire({
-      title: 'Acceso de Desarrollador',
-      text: 'Ingrese la clave maestra para levantar el bloqueo:',
-      input: 'password',
-      inputPlaceholder: 'Clave maestra...',
-      showCancelButton: true,
-      confirmButtonText: 'Desbloquear',
-      cancelButtonText: 'Cancelar',
-      confirmButtonColor: '#2563EB',
-      background: '#030712',
-      color: '#fff'
-    });
-
-    if (password === DEV_KEY) {
+  // Manejador del Formulario Interno de Desbloqueo Técnico
+  const handleSubmitKey = (e) => {
+    e.preventDefault();
+    if (inputKey.trim() === DEV_KEY) {
+      setAuthError('');
+      setAuthSuccess(true);
       sessionStorage.setItem('dev_bypass', 'true');
       sessionStorage.setItem('dev_authenticated', 'true');
-      setDevBypass(true);
-      Swal.fire({
-        title: 'Bloqueo Levantado',
-        text: '¿Deseas ingresar al Panel de Desarrollador ahora?',
-        icon: 'success',
-        showCancelButton: true,
-        confirmButtonText: 'Ir a /dev-portal',
-        cancelButtonText: 'Permanecer aquí',
-        confirmButtonColor: '#2563EB',
-        background: '#030712',
-        color: '#fff'
-      }).then((result) => {
-        if (result.isConfirmed) {
-          window.location.href = '/dev-portal';
-        }
-      });
-    } else if (password) {
-      Swal.fire({
-        title: 'Error',
-        text: 'Clave maestra incorrecta.',
-        icon: 'error',
-        background: '#030712',
-        color: '#fff'
-      });
+      
+      setTimeout(() => {
+        setDevBypass(true);
+        setShowAuthForm(false);
+      }, 1000);
+    } else {
+      setAuthError('Clave de Desarrollador incorrecta.');
     }
   };
 
@@ -157,7 +127,8 @@ export const BillingNotice = ({ admin, selectedModule, onDevRequest }) => {
     const nextCount = lockClicks + 1;
     if (nextCount >= 5) {
       setLockClicks(0);
-      handleEmergencyUnlock();
+      setShowAuthForm(true);
+      setAuthError('');
     } else {
       setLockClicks(nextCount);
       setTimeout(() => setLockClicks(0), 3000);
@@ -197,48 +168,122 @@ export const BillingNotice = ({ admin, selectedModule, onDevRequest }) => {
       >
         <div className="bg-gray-950 border-2 border-red-600/60 rounded-[2.5rem] max-w-lg w-full p-8 text-white shadow-[0_0_80px_rgba(220,38,38,0.4)] text-center animate-fade-in relative">
           
-          {/* Ícono interactivo: 5 toques activan el prompt de rescate del Dev */}
-          <button 
-            type="button"
-            onClick={handleLockClick}
-            className="w-20 h-20 bg-red-600/20 text-red-500 rounded-3xl flex items-center justify-center mx-auto mb-6 border border-red-500/40 shadow-xl shadow-red-950 cursor-pointer active:scale-90 transition-transform"
-            title="Soporte del Sistema"
-          >
-            <Lock className="w-10 h-10 animate-pulse" />
-          </button>
-          
-          <h2 className="text-3xl font-black text-white tracking-tight uppercase mb-3">
-            Servicio Suspendido
-          </h2>
-          
-          <p className="text-gray-300 text-sm mb-6 leading-relaxed font-medium">
-            {billing.mensaje || 'Su mensualidad ha vencido. Por favor realice el pago para continuar utilizando el sistema.'}
-          </p>
-          
-          <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5 text-left mb-6 shadow-inner">
-            <span className="text-[10px] text-amber-400 font-black tracking-widest uppercase block mb-2">
-              Información de Pago y Canales Autorizados
-            </span>
-            <pre className="text-xs text-gray-200 font-mono whitespace-pre-wrap leading-relaxed">
-              {billing.datos_pago || 'Nequi / Daviplata: 300 000 0000 - A nombre de: Administrador'}
-            </pre>
-          </div>
+          {/* MODAL / SUB-PANEL INTERNO DE DESBLOQUEO TÉCNICO (RENDERIZADO DENTRO DEL PROPIO COMPONENTE) */}
+          {showAuthForm ? (
+            <div className="space-y-6 animate-scale-up py-2">
+              <div className="w-16 h-16 bg-blue-600/20 text-blue-400 rounded-3xl flex items-center justify-center mx-auto border border-blue-500/40 shadow-lg">
+                <Key className="w-8 h-8" />
+              </div>
 
-          <p className="text-[11px] text-gray-500 font-bold uppercase tracking-wider mb-6">
-            Una vez realizado el abono, notifique a soporte técnico para reactivar el acceso inmediatamente.
-          </p>
+              <div>
+                <h3 className="text-2xl font-black text-white tracking-tight uppercase">
+                  Acceso de Desarrollador
+                </h3>
+                <p className="text-gray-400 text-xs mt-1">
+                  Ingresa la clave maestra para levantar el bloqueo en esta sesión
+                </p>
+              </div>
 
-          {/* BACKDOOR DISCRETO PARA EL DESARROLLADOR */}
-          <div className="pt-2 border-t border-gray-900 flex justify-between items-center text-[10px] text-gray-600">
-            <span>Uparqueo Security Engine</span>
-            <button 
-              type="button"
-              onClick={handleEmergencyUnlock}
-              className="hover:text-gray-400 font-mono text-[10px] underline decoration-dotted transition-colors flex items-center gap-1"
-            >
-              <Key size={10} /> Acceso Técnico
-            </button>
-          </div>
+              {authSuccess ? (
+                <div className="p-4 bg-emerald-500/20 border border-emerald-500/40 rounded-2xl text-emerald-400 text-xs font-bold flex items-center justify-center gap-2">
+                  <ShieldCheck size={18} />
+                  <span>Clave correcta. Levantando bloqueo del sistema...</span>
+                </div>
+              ) : (
+                <form onSubmit={handleSubmitKey} className="space-y-4">
+                  <div>
+                    <input 
+                      type="password"
+                      autoFocus
+                      value={inputKey}
+                      onChange={(e) => setInputKey(e.target.value)}
+                      placeholder="Ingresa clave maestra..."
+                      className="w-full bg-gray-900 border border-gray-700 focus:border-blue-500 rounded-2xl px-5 py-3.5 text-white text-center font-bold outline-none text-sm tracking-wider"
+                    />
+                  </div>
+
+                  {authError && (
+                    <div className="p-3 bg-red-500/20 border border-red-500/30 rounded-xl text-red-400 text-xs font-bold">
+                      {authError}
+                    </div>
+                  )}
+
+                  <div className="flex gap-3">
+                    <button 
+                      type="button"
+                      onClick={() => { setShowAuthForm(false); setAuthError(''); setInputKey(''); }}
+                      className="flex-1 bg-gray-900 hover:bg-gray-800 text-gray-300 font-bold text-xs uppercase py-3.5 rounded-2xl border border-gray-800 transition"
+                    >
+                      Cancelar
+                    </button>
+                    <button 
+                      type="submit"
+                      className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-black text-xs uppercase py-3.5 rounded-2xl transition shadow-lg shadow-blue-900/40"
+                    >
+                      Desbloquear
+                    </button>
+                  </div>
+
+                  <div className="pt-2">
+                    <button 
+                      type="button"
+                      onClick={() => { window.location.href = '/dev-portal'; }}
+                      className="text-[11px] text-blue-400 hover:text-blue-300 underline font-bold"
+                    >
+                      Ir directamente a /dev-portal →
+                    </button>
+                  </div>
+                </form>
+              )}
+            </div>
+          ) : (
+            /* VISTA NORMAL DEL BLOQUEO */
+            <>
+              {/* Ícono interactivo: 5 toques activan el prompt interno del Dev */}
+              <button 
+                type="button"
+                onClick={handleLockClick}
+                className="w-20 h-20 bg-red-600/20 text-red-500 rounded-3xl flex items-center justify-center mx-auto mb-6 border border-red-500/40 shadow-xl shadow-red-950 cursor-pointer active:scale-90 transition-transform"
+                title="Tocar 5 veces para soporte técnico"
+              >
+                <Lock className="w-10 h-10 animate-pulse" />
+              </button>
+              
+              <h2 className="text-3xl font-black text-white tracking-tight uppercase mb-3">
+                Servicio Suspendido
+              </h2>
+              
+              <p className="text-gray-300 text-sm mb-6 leading-relaxed font-medium">
+                {billing.mensaje || 'Su mensualidad ha vencido. Por favor realice el pago para continuar utilizando el sistema.'}
+              </p>
+              
+              <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5 text-left mb-6 shadow-inner">
+                <span className="text-[10px] text-amber-400 font-black tracking-widest uppercase block mb-2">
+                  Información de Pago y Canales Autorizados
+                </span>
+                <pre className="text-xs text-gray-200 font-mono whitespace-pre-wrap leading-relaxed">
+                  {billing.datos_pago || 'Nequi / Daviplata: 300 000 0000 - A nombre de: Administrador'}
+                </pre>
+              </div>
+
+              <p className="text-[11px] text-gray-500 font-bold uppercase tracking-wider mb-6">
+                Una vez realizado el abono, notifique a soporte técnico para reactivar el acceso inmediatamente.
+              </p>
+
+              {/* BOTÓN DISCRETO PARA ACCESO TÉCNICO INTERNO */}
+              <div className="pt-2 border-t border-gray-900 flex justify-between items-center text-[10px] text-gray-600">
+                <span>Uparqueo Security Engine</span>
+                <button 
+                  type="button"
+                  onClick={() => { setShowAuthForm(true); setAuthError(''); }}
+                  className="hover:text-blue-400 font-mono text-[10px] underline decoration-dotted transition-colors flex items-center gap-1 cursor-pointer"
+                >
+                  <Key size={10} /> Acceso Técnico
+                </button>
+              </div>
+            </>
+          )}
+
         </div>
       </div>
     );
