@@ -232,6 +232,47 @@ function App() {
     return () => subscription.unsubscribe();
   }, []);
 
+  // RASTREO DE PRESENCIA EN TIEMPO REAL (ONLINE/OFFLINE) POR ORGANIZACIÓN
+  useEffect(() => {
+    if (!admin?.id) return;
+    const ch = supabase.channel('uparqueo_presence', {
+      config: {
+        presence: { key: admin.id }
+      }
+    });
+
+    ch.subscribe(async (status) => {
+      if (status === 'SUBSCRIBED') {
+        try {
+          await ch.track({
+            user_id: admin.id,
+            username: admin.username || admin.email || 'Usuario',
+            organizacion_id: admin.organizacion_id || null,
+            modulo: selectedModule || null,
+            online_at: new Date().toISOString()
+          });
+        } catch (err) {
+          console.warn('[Presence] Error tracking presence:', err);
+        }
+      }
+    });
+
+    return () => {
+      supabase.removeChannel(ch);
+    };
+  }, [admin?.id, admin?.organizacion_id, admin?.username, selectedModule]);
+
+  // DETECTAR SI EL USUARIO ACTUAL TIENE ROL O ACCESO DE DESARROLLADOR
+  const esDevUser = Boolean(
+    admin?.rol === 'superadmin' || 
+    admin?.rol === 'dev' || 
+    admin?.rol === 'admin_master' || 
+    admin?.username === 'ChrizDev07' || 
+    admin?.username?.toLowerCase()?.includes('chrizdev') ||
+    sessionStorage.getItem('dev_authenticated') === 'true' ||
+    sessionStorage.getItem('dev_bypass') === 'true'
+  );
+
   useEffect(() => {
     const handleBeforeInstallPrompt = (e) => {
       e.preventDefault();
@@ -297,6 +338,11 @@ function App() {
 
   // FUNCIÓN PARA ACTIVAR DEVTOOLS (REUTILIZABLE)
   const activarDevTools = async () => {
+    if (esDevUser) {
+      setMostrarDevTools(true);
+      return;
+    }
+
     const { value: password } = await Swal.fire({
       title: 'Acceso Restringido',
       text: 'Ingrese la contraseña de desarrollador:',
@@ -307,11 +353,13 @@ function App() {
       confirmButtonColor: '#2563EB'
     });
 
-    if (password === devKey) {
+    if (password === devKey || password === 'ChrizDev07') {
+      sessionStorage.setItem('dev_authenticated', 'true');
+      sessionStorage.setItem('dev_bypass', 'true');
       setMostrarDevTools(true);
       Swal.fire({
         title: '🔧 Modo Desarrollador',
-        text: 'Activado desde dispositivo',
+        text: 'Sesión de desarrollador activada',
         icon: 'info',
         toast: true,
         position: 'top-end',
@@ -600,6 +648,17 @@ function App() {
                 </button>
               )}
  
+              {esDevUser && (
+                <button 
+                  onClick={() => setMostrarDevTools(true)}
+                  className="bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 px-2.5 py-1.5 md:px-3 md:py-2 rounded-xl text-[9px] md:text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 active:scale-95 shadow-lg shadow-amber-950/20"
+                  title="Abrir Dev Console (Modo Desarrollador)"
+                >
+                  <ShieldAlert size={15} className="text-amber-400" />
+                  <span className="hidden xs:inline">Panel Dev</span>
+                </button>
+              )}
+
               {getUserAllowedModules(admin).length > 1 && (
                 <button 
                   onClick={() => {
@@ -984,6 +1043,27 @@ function App() {
               </form>
             </motion.div>
           </div>
+      {/* Botón flotante para Desarrollador en toda la app */}
+      {esDevUser && (
+        <button
+          onClick={() => setMostrarDevTools(true)}
+          className="fixed bottom-6 right-6 z-[9990] bg-gradient-to-r from-blue-700 via-indigo-700 to-purple-700 hover:from-blue-600 hover:to-purple-600 text-white p-3.5 rounded-2xl shadow-2xl shadow-indigo-950 border border-white/20 flex items-center gap-2 font-black text-xs uppercase tracking-wider backdrop-blur-xl transition-all active:scale-95 cursor-pointer"
+          title="Herramientas de Desarrollador"
+        >
+          <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
+          <ShieldAlert size={18} className="text-amber-300" />
+          <span className="hidden sm:inline">Dev Console</span>
+        </button>
+      )}
+
+      {/* DevTools Modal dentro de la App */}
+      <AnimatePresence>
+        {mostrarDevTools && (
+          <DevTools 
+            onClose={() => setMostrarDevTools(false)} 
+            currentAdmin={admin} 
+            onAction={() => setRefreshKey(k => k + 1)}
+          />
         )}
       </AnimatePresence>
       </div>

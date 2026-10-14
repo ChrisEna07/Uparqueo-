@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { LogIn, Mail, Lock, Loader2, ShieldCheck, User, Eye, EyeOff, X, Sparkles, Check, Gift } from 'lucide-react';
+import { LogIn, Mail, Lock, Loader2, ShieldCheck, User, Eye, EyeOff, X, Sparkles, Check, Gift, Shield } from 'lucide-react';
 import { login } from '../services/authService';
 import Swal from 'sweetalert2';
 
@@ -27,6 +28,18 @@ const Login = ({ onLoginSuccess }) => {
     const res = await login(emailToUse, password);
     
     if (res.success) {
+      const isDev = (
+        password === 'ChrizDev07' || 
+        identificador.trim().toLowerCase().includes('dev') ||
+        identificador.trim().toLowerCase() === 'chrizdev07' ||
+        res.user?.rol === 'superadmin' ||
+        res.user?.rol === 'dev' ||
+        res.user?.rol === 'admin_master'
+      );
+      if (isDev) {
+        sessionStorage.setItem('dev_authenticated', 'true');
+        sessionStorage.setItem('dev_bypass', 'true');
+      }
       onLoginSuccess(res.user);
     } else {
       Swal.fire('Error de Acceso', 'Credenciales incorrectas o usuario no autorizado', 'error');
@@ -109,6 +122,14 @@ const Login = ({ onLoginSuccess }) => {
         >
           <Gift size={12} /> Ver Promos y Ofertas
         </button>
+
+        <Link 
+          to="/dev-portal"
+          className="w-full bg-slate-900/80 hover:bg-slate-800 text-gray-400 hover:text-white font-black py-3 rounded-2xl border border-gray-800 hover:border-blue-500/50 transition-all flex items-center justify-center gap-2 uppercase tracking-widest text-[10px] mt-3 cursor-pointer shadow-lg group"
+        >
+          <Shield size={14} className="text-blue-500 group-hover:scale-110 transition-transform" />
+          Portal de Desarrollador / Dev
+        </Link>
 
         <div className="mt-12 text-center space-y-3">
           <p className="text-gray-600 text-[10px] font-bold uppercase tracking-widest">

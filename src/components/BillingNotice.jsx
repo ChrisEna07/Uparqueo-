@@ -1,12 +1,29 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { AlertTriangle, Lock, X, Key, ShieldCheck } from 'lucide-react';
+import { AlertTriangle, Lock, X, Key, ShieldCheck, Wifi, WifiOff } from 'lucide-react';
 
 export const BillingNotice = ({ admin, selectedModule, onDevRequest }) => {
   const navigate = useNavigate();
   const location = useLocation();
-  const [billing, setBilling] = useState(null);
+
+  // 1. Cargar estado inicial desde caché local offline
+  const getInitialBilling = () => {
+    try {
+      const cached = localStorage.getItem('uparqueo_offline_billing_state');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (parsed?.banner_activo) return parsed;
+      }
+    } catch (e) {}
+    return null;
+  };
+
+  const [billing, setBilling] = useState(getInitialBilling);
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const [orgSuspended, setOrgSuspended] = useState(() => {
+    return localStorage.getItem('uparqueo_org_status') === 'suspendido';
+  });
   const [dismissed, setDismissed] = useState(false);
   const [lockClicks, setLockClicks] = useState(0);
 
@@ -37,12 +54,58 @@ export const BillingNotice = ({ admin, selectedModule, onDevRequest }) => {
     }
 
     const fetchBilling = async () => {
+      // Si el dispositivo está offline, aplicar estrictamente la caché local
+      if (!navigator.onLine) {
+        setIsOnline(false);
+        try {
+          const cachedOrgStatus = localStorage.getItem('uparqueo_org_status');
+          if (cachedOrgStatus === 'suspendido') {
+            setOrgSuspended(true);
+          }
+          const cached = localStorage.getItem('uparqueo_offline_billing_state');
+          if (cached) {
+            const parsed = JSON.parse(cached);
+            if (parsed && parsed.banner_activo) {
+              setBilling(parsed);
+              return;
+            }
+          }
+          setBilling(null);
+        } catch (e) {}
+        return;
+      }
+
+      setIsOnline(true);
+
       try {
-        // 1. Consulta directa y simplificada a tenant_billing ordenando por más reciente
+        // 1. Consultar estado de la organización en public.organizaciones si está vinculada
+        if (admin?.organizacion_id) {
+          try {
+            const { data: orgData } = await supabase
+              .from('organizaciones')
+              .select('estado, nombre')
+              .eq('id', admin.organizacion_id)
+              .maybeSingle();
+
+            if (orgData) {
+              if (orgData.estado === 'suspendido') {
+                setOrgSuspended(true);
+                localStorage.setItem('uparqueo_org_status', 'suspendido');
+              } else {
+                setOrgSuspended(false);
+                localStorage.setItem('uparqueo_org_status', 'activo');
+              }
+            }
+          } catch (e) {
+            console.warn('[BillingNotice] Error al verificar estado de organización:', e);
+          }
+        }
+
+        // 2. Consulta a tenant_billing SIN filtrar por banner_activo en SQL,
+        // para que si una organización tiene banner_activo = false, se respete y NO caiga en el default!
         const { data, error } = await supabase
           .from('tenant_billing')
           .select('*')
-          .eq('banner_activo', true)
           .order('updated_at', { ascending: false });
 
         if (error) {
@@ -50,15 +113,15 @@ export const BillingNotice = ({ admin, selectedModule, onDevRequest }) => {
           return;
         }
 
-        if (data && data.length > 0) {
-          let matched = null;
+        let matched = null;
 
-          // Regla 1: Coincidencia específica por organizacion_id
+        if (data && data.length > 0) {
+          // Prioridad 1: Coincidencia ESPECÍFICA por organizacion_id
           if (admin?.organizacion_id) {
             matched = data.find(b => b.organizacion_id === admin.organizacion_id || b.tenant_id === admin.organizacion_id);
           }
 
-          // Regla 2: Coincidencia específica por módulo activo ('parqueadero' o 'informal' / 'informales')
+          // Prioridad 2: Coincidencia por módulo activo solo si NO hubo coincidencia de organización
           if (!matched && moduloActual) {
             matched = data.find(b => 
               b.tenant_id === moduloActual || 
@@ -66,21 +129,20 @@ export const BillingNotice = ({ admin, selectedModule, onDevRequest }) => {
             );
           }
 
-          // Regla 3: Comodín global ('default') aplicable a todos los módulos
+          // Prioridad 3: Comodín global ('default') aplicable a todos si no hay específica
           if (!matched) {
             matched = data.find(b => b.tenant_id === 'default');
           }
+        }
 
-          console.log('[BillingNotice] Coincidencia activa:', { 
-            moduloActual, 
-            orgId: admin?.organizacion_id, 
-            matched, 
-            filasActivas: data.length 
-          });
-
-          setBilling(matched || null);
+        // Si se encontró un registro y tiene el banner activo
+        if (matched && matched.banner_activo) {
+          setBilling(matched);
+          localStorage.setItem('uparqueo_offline_billing_state', JSON.stringify(matched));
         } else {
+          // Está explícitamente desactivado para esta entidad
           setBilling(null);
+          localStorage.setItem('uparqueo_offline_billing_state', JSON.stringify({ banner_activo: false, es_bloqueante: false }));
         }
       } catch (err) {
         console.error('[BillingNotice] Error en fetchBilling:', err);
@@ -89,19 +151,32 @@ export const BillingNotice = ({ admin, selectedModule, onDevRequest }) => {
 
     fetchBilling();
 
-    // Suscripción en tiempo real a cambios en tenant_billing
+    // Eventos de conectividad para refresco instantáneo al volver online
+    const handleOnline = () => {
+      setIsOnline(true);
+      fetchBilling();
+    };
+    const handleOffline = () => {
+      setIsOnline(false);
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    // Suscripción en tiempo real a cambios en tenant_billing y organizaciones
     const channel = supabase
       .channel('realtime_billing_channel')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'tenant_billing' },
-        () => {
-          fetchBilling();
-        }
-      )
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tenant_billing' }, () => {
+        fetchBilling();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'organizaciones' }, () => {
+        fetchBilling();
+      })
       .subscribe();
 
     return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
       supabase.removeChannel(channel);
     };
   }, [admin?.id, admin?.organizacion_id, admin?.modulo, selectedModule, moduloActual]);
@@ -125,15 +200,24 @@ export const BillingNotice = ({ admin, selectedModule, onDevRequest }) => {
     return null;
   }
 
-  // Si no hay configuración activa encontrada
-  if (!billing || !billing.banner_activo) {
+  // Si la organización está suspendida, forzar bloqueo obligatorio
+  const isSuspended = orgSuspended && !esSuperAdmin && !devBypass;
+
+  // Si no hay configuración activa encontrada y no está suspendida la org
+  if (!isSuspended && (!billing || !billing.banner_activo)) {
     return null;
   }
 
   // Si fue descartado por el usuario con el botón (X) en este ciclo y no es bloqueante
-  if (!billing.es_bloqueante && dismissed) {
+  if (!isSuspended && billing && !billing.es_bloqueante && dismissed) {
     return null;
   }
+
+  const effectiveIsBlocked = isSuspended || Boolean(billing?.es_bloqueante);
+  const effectiveMessage = isSuspended 
+    ? 'El acceso a esta organización ha sido temporalmente suspendido por administración. Comuníquese para reactivar su servicio.'
+    : (billing?.mensaje || 'Su cuenta presenta mensualidades pendientes. El acceso al sistema se encuentra restringido.');
+  const effectiveDatosPago = billing?.datos_pago || 'Consulte los canales autorizados de administración.';
 
   // Método de validación de clave exitosa: desmonta de inmediato el componente
   const handleSubmitKey = (e) => {
@@ -180,15 +264,23 @@ export const BillingNotice = ({ admin, selectedModule, onDevRequest }) => {
   };
 
   // =========================================================================
-  // CASO 1: BLOQUEO OBLIGATORIO (es_bloqueante === true)
+  // CASO 1: BLOQUEO OBLIGATORIO (es_bloqueante === true o suspendido)
   // =========================================================================
-  if (billing.es_bloqueante) {
+  if (effectiveIsBlocked) {
     return (
       <div 
         className="fixed inset-0 z-[999990] flex items-center justify-center bg-black/95 backdrop-blur-xl p-4 select-none"
         style={{ pointerEvents: 'all' }}
       >
         <div className="bg-gray-950 border-2 border-red-600/60 rounded-[2.5rem] max-w-lg w-full p-8 text-white shadow-[0_0_80px_rgba(220,38,38,0.4)] text-center animate-fade-in relative">
+          
+          {/* Indicador de estado de conexión */}
+          {!isOnline && (
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-500/20 border border-amber-500/30 text-amber-300 rounded-full text-[10px] font-bold mb-4">
+              <WifiOff size={12} />
+              <span>Restricción Activa (Modo Offline)</span>
+            </div>
+          )}
           
           {showAuthForm ? (
             <div className="space-y-6 animate-scale-up py-2">
@@ -278,7 +370,7 @@ export const BillingNotice = ({ admin, selectedModule, onDevRequest }) => {
               </div>
 
               <p className="text-gray-300 text-sm mb-6 leading-relaxed">
-                {billing.mensaje || 'Su cuenta presenta mensualidades pendientes. El acceso al sistema se encuentra restringido.'}
+                {effectiveMessage}
               </p>
 
               <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5 text-left mb-6 shadow-inner">
@@ -286,7 +378,7 @@ export const BillingNotice = ({ admin, selectedModule, onDevRequest }) => {
                   Información de Pago y Canales Autorizados
                 </span>
                 <pre className="text-xs text-gray-200 font-mono whitespace-pre-wrap leading-relaxed">
-                  {billing.datos_pago || 'Nequi / Daviplata: 300 000 0000 - A nombre de: Administrador'}
+                  {effectiveDatosPago}
                 </pre>
               </div>
 

@@ -4,7 +4,8 @@ import { supabase } from '../lib/supabase';
 import { 
   Shield, Key, CheckCircle, AlertCircle, RefreshCw, 
   Save, ArrowLeft, Building2, Users, PlusCircle, Check, 
-  Power, PowerOff, Building, UserPlus, Lock, Mail
+  Power, PowerOff, Building, UserPlus, Lock, Mail,
+  Wifi, WifiOff, Activity
 } from 'lucide-react';
 import { getTenantsList } from '../services/tenantService';
 import { createOrganizationAdmin } from '../services/authService';
@@ -52,10 +53,38 @@ export const DevPortal = () => {
   const [orgSuccessMsg, setOrgSuccessMsg] = useState('');
   const [orgErrorMsg, setOrgErrorMsg] = useState('');
 
+  // Rastrear Organizaciones Online en tiempo real
+  const [onlineOrgsMap, setOnlineOrgsMap] = useState({});
+
   // Clave maestra configurada en .env o fallback de seguridad
   const DEV_MASTER_KEY = import.meta.env.VITE_DEV_ADMIN_KEY || 'ChrizDev07';
 
   const isUuid = (val) => Boolean(val && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val));
+
+  // Suscripción a presencia en tiempo real para saber qué organizaciones están online
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    const channel = supabase.channel('uparqueo_presence');
+
+    channel
+      .on('presence', { event: 'sync' }, () => {
+        const state = channel.presenceState();
+        const counts = {};
+        Object.values(state).forEach(presences => {
+          presences.forEach(p => {
+            if (p.organizacion_id) {
+              counts[p.organizacion_id] = (counts[p.organizacion_id] || 0) + 1;
+            }
+          });
+        });
+        setOnlineOrgsMap(counts);
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [isAuthenticated]);
 
   useEffect(() => {
     // 1. Si ya se autenticó previamente en la pestaña actual
@@ -177,8 +206,8 @@ export const DevPortal = () => {
 
     try {
       const item = tenantsList.find(t => t.id === selectedTenantId || t.slug === selectedTenantId);
-      const selectedOrgId = item?.tipo === 'organizacion' && isUuid(item.id) ? item.id : (isUuid(selectedTenantId) ? selectedTenantId : null);
-      const selectedTenantKey = currentBillingRow?.tenant_id || item?.slug || item?.id || selectedTenantId;
+      const selectedOrgId = (item?.tipo === 'organizacion' && isUuid(item.id)) ? item.id : (isUuid(selectedTenantId) ? selectedTenantId : null);
+      const selectedTenantKey = selectedOrgId || item?.slug || item?.id || selectedTenantId;
 
       const upsertPayload = {
         tenant_id: selectedTenantKey,
@@ -202,6 +231,22 @@ export const DevPortal = () => {
         .single();
 
       if (error) throw error;
+
+      // Sincronizar cualquier otra fila que apunte a esta organización
+      if (selectedOrgId) {
+        await supabase
+          .from('tenant_billing')
+          .update({
+            banner_activo: bannerActivo,
+            tipo_aviso: tipoAviso,
+            es_bloqueante: esBloqueante,
+            mensaje: mensaje || '',
+            datos_pago: datosPago || '',
+            updated_at: new Date().toISOString()
+          })
+          .or(`organizacion_id.eq.${selectedOrgId},tenant_id.eq.${selectedOrgId}`);
+      }
+
       if (savedData) {
         setCurrentBillingRow(savedData);
       }
@@ -797,6 +842,35 @@ export const DevPortal = () => {
               </form>
             </div>
 
+            {/* Métricas Rápidas de Organizaciones */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              <div className="bg-gray-900/60 border border-gray-800 rounded-2xl p-4">
+                <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest block">Total Registradas</span>
+                <span className="text-2xl font-black text-white mt-1 block">{organizacionesList.length}</span>
+              </div>
+              <div className="bg-gray-900/60 border border-gray-800 rounded-2xl p-4">
+                <span className="text-[10px] font-black text-emerald-400 uppercase tracking-widest block">Activas</span>
+                <span className="text-2xl font-black text-emerald-400 mt-1 block">
+                  {organizacionesList.filter(o => o.estado === 'activo').length}
+                </span>
+              </div>
+              <div className="bg-gray-900/60 border border-gray-800 rounded-2xl p-4">
+                <span className="text-[10px] font-black text-cyan-400 uppercase tracking-widest block">Online Ahora</span>
+                <div className="flex items-center gap-2 mt-1">
+                  <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-ping"></span>
+                  <span className="text-2xl font-black text-cyan-400">
+                    {organizacionesList.filter(o => (onlineOrgsMap[o.id] || 0) > 0).length}
+                  </span>
+                </div>
+              </div>
+              <div className="bg-gray-900/60 border border-gray-800 rounded-2xl p-4">
+                <span className="text-[10px] font-black text-purple-400 uppercase tracking-widest block">Usuarios Online</span>
+                <span className="text-2xl font-black text-purple-400 mt-1 block">
+                  {Object.values(onlineOrgsMap).reduce((a, b) => a + b, 0)}
+                </span>
+              </div>
+            </div>
+
             {/* Tabla de Organizaciones Existentes */}
             <div className="bg-gray-900/60 border border-gray-800 rounded-[2.5rem] p-8 shadow-2xl space-y-6">
               <div className="flex justify-between items-center">
@@ -805,7 +879,7 @@ export const DevPortal = () => {
                     Organizaciones Registradas ({organizacionesList.length})
                   </h3>
                   <p className="text-xs text-gray-400">
-                    Monitorea empleados asociados y controla el estado operativo
+                    Monitorea empleados asociados y controla el estado operativo y de conexión
                   </p>
                 </div>
                 <button 
@@ -824,6 +898,7 @@ export const DevPortal = () => {
                       <th className="py-3 px-4">Slug</th>
                       <th className="py-3 px-4">Módulos</th>
                       <th className="py-3 px-4 text-center">Empleados</th>
+                      <th className="py-3 px-4 text-center">Conexión</th>
                       <th className="py-3 px-4 text-center">Estado</th>
                       <th className="py-3 px-4 text-right">Acciones</th>
                     </tr>
@@ -831,7 +906,7 @@ export const DevPortal = () => {
                   <tbody className="divide-y divide-gray-800/60 text-xs">
                     {organizacionesList.length === 0 ? (
                       <tr>
-                        <td colSpan="6" className="py-8 text-center text-gray-500 font-medium">
+                        <td colSpan="7" className="py-8 text-center text-gray-500 font-medium">
                           No hay organizaciones registradas aún.
                         </td>
                       </tr>
@@ -839,6 +914,7 @@ export const DevPortal = () => {
                       organizacionesList.map(org => {
                         const cantEmp = empleadosCounts[org.id] || 0;
                         const esActivo = org.estado === 'activo';
+                        const numOnline = onlineOrgsMap[org.id] || 0;
 
                         return (
                           <tr key={org.id} className="hover:bg-gray-800/20 transition">
@@ -865,6 +941,19 @@ export const DevPortal = () => {
                               <span className="inline-flex items-center gap-1 font-bold text-gray-300 bg-gray-800/80 px-2.5 py-1 rounded-xl">
                                 <Users size={12} className="text-gray-400" /> {cantEmp}
                               </span>
+                            </td>
+                            <td className="py-4 px-4 text-center">
+                              {numOnline > 0 ? (
+                                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                                  Online ({numOnline})
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-gray-800 text-gray-500 border border-gray-700">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-gray-600"></span>
+                                  Offline
+                                </span>
+                              )}
                             </td>
                             <td className="py-4 px-4 text-center">
                               <span className={`inline-block px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${

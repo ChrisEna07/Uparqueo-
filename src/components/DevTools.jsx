@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '../lib/supabase';
 import { 
@@ -7,7 +8,8 @@ import {
   ChevronRight, Key, Car, Store, Briefcase,
   UserPlus, UserCheck, ShieldCheck, Edit2, Eye, EyeOff, Clock,
   LayoutGrid, MessageSquare, ShieldAlert, Search, ArrowLeft, Send, Menu,
-  TrendingDown, CreditCard, Save, CheckCircle, Building2
+  TrendingDown, CreditCard, Save, CheckCircle, Building2,
+  ExternalLink, Power, PowerOff, RefreshCw, Wifi, WifiOff
 } from 'lucide-react';
 import { getAdmins, createAdmin, deleteAdmin, updateAdmin } from '../services/authService';
 import { getTenantsList } from '../services/tenantService';
@@ -40,6 +42,12 @@ const DevTools = ({ onClose, currentAdmin, onAction }) => {
   const [guardandoBilling, setGuardandoBilling] = useState(false);
   const [billingRow, setBillingRow] = useState(null);
 
+  const navigate = useNavigate();
+  // Estados para Organizaciones & Presencia Online
+  const [organizacionesList, setOrganizacionesList] = useState([]);
+  const [empleadosCounts, setEmpleadosCounts] = useState({});
+  const [onlineOrgsMap, setOnlineOrgsMap] = useState({});
+
   const [formData, setFormData] = useState({
     username: '',
     password: '',
@@ -51,7 +59,91 @@ const DevTools = ({ onClose, currentAdmin, onAction }) => {
   useEffect(() => {
     cargarAdmins();
     inicializarBilling();
+    cargarOrganizaciones();
+
+    // Rastrear presencia en tiempo real
+    const channel = supabase.channel('uparqueo_presence');
+    channel
+      .on('presence', { event: 'sync' }, () => {
+        const state = channel.presenceState();
+        const counts = {};
+        Object.values(state).forEach(presences => {
+          presences.forEach(p => {
+            if (p.organizacion_id) {
+              counts[p.organizacion_id] = (counts[p.organizacion_id] || 0) + 1;
+            }
+          });
+        });
+        setOnlineOrgsMap(counts);
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
+
+  const cargarOrganizaciones = async () => {
+    try {
+      const { data: orgs, error } = await supabase
+        .from('organizaciones')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.warn('Error al cargar organizaciones:', error);
+        return;
+      }
+      setOrganizacionesList(orgs || []);
+
+      const { data: perfilesData } = await supabase
+        .from('perfiles')
+        .select('organizacion_id');
+
+      const counts = {};
+      (perfilesData || []).forEach(p => {
+        if (p.organizacion_id) {
+          counts[p.organizacion_id] = (counts[p.organizacion_id] || 0) + 1;
+        }
+      });
+      setEmpleadosCounts(counts);
+    } catch (e) {
+      console.error('Error al cargar organizaciones:', e);
+    }
+  };
+
+  const handleToggleEstadoOrg = async (org) => {
+    const nuevoEstado = org.estado === 'activo' ? 'suspendido' : 'activo';
+    const accion = nuevoEstado === 'suspendido' ? 'suspender' : 'reactivar';
+    
+    const confirm = await Swal.fire({
+      title: `¿Deseas ${accion} esta organización?`,
+      text: nuevoEstado === 'suspendido' 
+        ? `Se bloqueará el acceso a todos los usuarios de "${org.nombre}" inmediatamente.`
+        : `Se reactivará el acceso normal para "${org.nombre}".`,
+      icon: nuevoEstado === 'suspendido' ? 'warning' : 'question',
+      showCancelButton: true,
+      confirmButtonText: `Sí, ${accion}`,
+      cancelButtonText: 'Cancelar',
+      confirmButtonColor: nuevoEstado === 'suspendido' ? '#EF4444' : '#10B981'
+    });
+
+    if (!confirm.isConfirmed) return;
+
+    try {
+      const { error } = await supabase
+        .from('organizaciones')
+        .update({ estado: nuevoEstado, updated_at: new Date().toISOString() })
+        .eq('id', org.id);
+
+      if (error) throw error;
+
+      Swal.fire('Estado Actualizado', `"${org.nombre}" ahora está ${nuevoEstado}.`, 'success');
+      cargarOrganizaciones();
+    } catch (err) {
+      Swal.fire('Error', err.message || 'No se pudo actualizar.', 'error');
+    }
+  };
 
   const inicializarBilling = async () => {
     const res = await getTenantsList();
@@ -118,8 +210,8 @@ const DevTools = ({ onClose, currentAdmin, onAction }) => {
     try {
       const isUuid = (val) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val);
       const item = tenantsList.find(t => t.id === selectedTenantId || t.slug === selectedTenantId);
-      const selectedOrgId = item?.tipo === 'organizacion' && isUuid(item.id) ? item.id : (isUuid(selectedTenantId) ? selectedTenantId : null);
-      const selectedTenantKey = billingRow?.tenant_id || item?.slug || item?.id || selectedTenantId;
+      const selectedOrgId = (item?.tipo === 'organizacion' && isUuid(item.id)) ? item.id : (isUuid(selectedTenantId) ? selectedTenantId : null);
+      const selectedTenantKey = selectedOrgId || item?.slug || item?.id || selectedTenantId;
 
       const upsertPayload = {
         tenant_id: selectedTenantKey,
@@ -142,8 +234,24 @@ const DevTools = ({ onClose, currentAdmin, onAction }) => {
         .single();
 
       if (error) throw error;
+
+      // Sincronizar cualquier otra fila que apunte a esta organización para que no queden remanentes activos
+      if (selectedOrgId) {
+        await supabase
+          .from('tenant_billing')
+          .update({
+            banner_activo: billingData.banner_activo,
+            tipo_aviso: billingData.tipo_aviso,
+            es_bloqueante: billingData.es_bloqueante,
+            mensaje: billingData.mensaje,
+            datos_pago: billingData.datos_pago,
+            updated_at: new Date().toISOString()
+          })
+          .or(`organizacion_id.eq.${selectedOrgId},tenant_id.eq.${selectedOrgId}`);
+      }
+
       if (savedData) setBillingRow(savedData);
-      Swal.fire('¡Configuración Guardada!', `El estado de cobro para el tenant [${selectedTenantKey}] fue sincronizado en tiempo real.`, 'success');
+      Swal.fire('¡Configuración Guardada!', `El estado de cobro para [${item?.nombre || selectedTenantKey}] fue sincronizado en tiempo real.`, 'success');
     } catch (err) {
       Swal.fire('Error', 'No se pudo guardar la configuración: ' + err.message, 'error');
     } finally {
@@ -256,6 +364,7 @@ const DevTools = ({ onClose, currentAdmin, onAction }) => {
 
           <div className="flex-1 space-y-3">
             {[
+              { id: 'organizaciones', icon: Building2, label: 'Organizaciones & Online' },
               { id: 'admins', icon: Users, label: 'Usuarios Master' },
               { id: 'billing', icon: CreditCard, label: 'Cobro & Suscripción' },
               { id: 'support', icon: MessageSquare, label: 'Diagnóstico & Soporte' },
@@ -278,9 +387,20 @@ const DevTools = ({ onClose, currentAdmin, onAction }) => {
             ))}
           </div>
 
-          <button onClick={onClose} className="mt-auto text-red-500 hover:bg-red-500/10 py-4 rounded-2xl flex justify-center gap-2 text-xs font-black uppercase tracking-widest transition-all">
-            <X size={18}/> Cerrar Panel
-          </button>
+          <div className="mt-auto space-y-2">
+            <button 
+              onClick={() => {
+                onClose();
+                navigate('/dev-portal');
+              }}
+              className="w-full bg-blue-600/20 hover:bg-blue-600 border border-blue-500/30 text-blue-300 hover:text-white py-3.5 px-4 rounded-2xl flex items-center justify-center gap-2 text-xs font-black uppercase tracking-wider transition-all"
+            >
+              <ExternalLink size={16}/> Abrir Portal Web
+            </button>
+            <button onClick={onClose} className="w-full text-red-500 hover:bg-red-500/10 py-3 rounded-2xl flex justify-center gap-2 text-xs font-black uppercase tracking-widest transition-all">
+              <X size={18}/> Cerrar Panel
+            </button>
+          </div>
         </div>
 
         {/* OVERLAY PARA CERRAR MENU EN MOVIL */}
@@ -302,6 +422,152 @@ const DevTools = ({ onClose, currentAdmin, onAction }) => {
 
           <div className="flex-1 overflow-y-auto px-8 md:px-12 py-10 custom-scrollbar">
             <AnimatePresence mode="wait">
+              {activeTab === 'organizaciones' && (
+                <motion.div key="organizaciones" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-8">
+                  <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
+                    <div>
+                      <h3 className="text-3xl font-black text-white">Organizaciones & Clientes</h3>
+                      <p className="text-gray-400 text-xs mt-1 font-medium">
+                        Monitorea estado de conexión en tiempo real y gestiona suspensiones
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <button 
+                        onClick={cargarOrganizaciones}
+                        className="bg-gray-900 border border-gray-800 text-gray-300 hover:text-white px-5 py-3 rounded-2xl font-black text-xs uppercase tracking-wider flex items-center gap-2 transition"
+                      >
+                        <RefreshCw size={16}/> Recargar
+                      </button>
+                      <button 
+                        onClick={() => {
+                          onClose();
+                          navigate('/dev-portal');
+                        }}
+                        className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-3 rounded-2xl font-black text-xs uppercase tracking-wider flex items-center gap-2 transition shadow-lg shadow-blue-900/30"
+                      >
+                        <ExternalLink size={16}/> Portal Web
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Resumen de Métricas */}
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div className="bg-gray-900/50 border border-gray-800 p-5 rounded-2xl">
+                      <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest block">Registradas</span>
+                      <span className="text-3xl font-black text-white mt-1 block">{organizacionesList.length}</span>
+                    </div>
+                    <div className="bg-gray-900/50 border border-gray-800 p-5 rounded-2xl">
+                      <span className="text-[10px] font-black text-emerald-400 uppercase tracking-widest block">Activas</span>
+                      <span className="text-3xl font-black text-emerald-400 mt-1 block">
+                        {organizacionesList.filter(o => o.estado === 'activo').length}
+                      </span>
+                    </div>
+                    <div className="bg-gray-900/50 border border-gray-800 p-5 rounded-2xl">
+                      <span className="text-[10px] font-black text-cyan-400 uppercase tracking-widest block">Online Ahora</span>
+                      <div className="flex items-center gap-2 mt-1">
+                        <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-ping"></span>
+                        <span className="text-3xl font-black text-cyan-400">
+                          {organizacionesList.filter(o => (onlineOrgsMap[o.id] || 0) > 0).length}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="bg-gray-900/50 border border-gray-800 p-5 rounded-2xl">
+                      <span className="text-[10px] font-black text-purple-400 uppercase tracking-widest block">Sesiones Activas</span>
+                      <span className="text-3xl font-black text-purple-400 mt-1 block">
+                        {Object.values(onlineOrgsMap).reduce((a, b) => a + b, 0)}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Tarjetas de Organizaciones */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {organizacionesList.length === 0 ? (
+                      <div className="col-span-2 text-center py-12 text-gray-500 font-bold bg-gray-900/20 border border-gray-800 rounded-3xl">
+                        No hay organizaciones registradas en el sistema.
+                      </div>
+                    ) : (
+                      organizacionesList.map(org => {
+                        const cantEmp = empleadosCounts[org.id] || 0;
+                        const esActivo = org.estado === 'activo';
+                        const numOnline = onlineOrgsMap[org.id] || 0;
+
+                        return (
+                          <div 
+                            key={org.id} 
+                            className="bg-gray-900/40 border border-gray-800 hover:border-gray-700 rounded-3xl p-6 transition flex flex-col justify-between gap-6"
+                          >
+                            <div className="space-y-3">
+                              <div className="flex items-start justify-between gap-4">
+                                <div className="flex items-center gap-3">
+                                  <div className="p-3 bg-blue-600/10 text-blue-400 rounded-2xl border border-blue-500/20">
+                                    <Building2 size={24} />
+                                  </div>
+                                  <div>
+                                    <h4 className="text-lg font-black text-white">{org.nombre}</h4>
+                                    <span className="text-xs text-gray-500 font-mono">@{org.slug}</span>
+                                  </div>
+                                </div>
+
+                                <div className="flex flex-col items-end gap-1.5">
+                                  {numOnline > 0 ? (
+                                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                                      <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                                      Online ({numOnline})
+                                    </span>
+                                  ) : (
+                                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-gray-800 text-gray-500 border border-gray-700">
+                                      <span className="w-1.5 h-1.5 rounded-full bg-gray-600"></span>
+                                      Offline
+                                    </span>
+                                  )}
+
+                                  <span className={`inline-block px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider ${
+                                    esActivo 
+                                      ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20' 
+                                      : 'bg-red-500/10 text-red-400 border border-red-500/20'
+                                  }`}>
+                                    {org.estado}
+                                  </span>
+                                </div>
+                              </div>
+
+                              <div className="flex items-center gap-2 pt-2 flex-wrap">
+                                <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mr-1">Módulos:</span>
+                                {Array.isArray(org.modulos_activos) && org.modulos_activos.map(m => (
+                                  <span key={m} className="px-2.5 py-1 bg-gray-800 text-gray-300 rounded-xl text-[10px] font-bold border border-gray-700">
+                                    {m}
+                                  </span>
+                                ))}
+                              </div>
+
+                              <div className="flex items-center gap-2 text-gray-400 text-xs pt-1">
+                                <Users size={14} className="text-gray-500" />
+                                <span><strong>{cantEmp}</strong> colaboradores / cuentas</span>
+                              </div>
+                            </div>
+
+                            <div className="pt-4 border-t border-gray-800/80 flex items-center justify-between gap-3">
+                              <span className="text-[11px] text-gray-500">ID: {org.id.slice(0, 8)}...</span>
+                              <button
+                                onClick={() => handleToggleEstadoOrg(org)}
+                                className={`px-4 py-2.5 rounded-2xl font-bold text-xs transition flex items-center gap-2 ${
+                                  esActivo
+                                    ? 'bg-red-600/10 hover:bg-red-600 text-red-400 hover:text-white border border-red-600/30'
+                                    : 'bg-emerald-600/10 hover:bg-emerald-600 text-emerald-400 hover:text-white border border-emerald-600/30'
+                                }`}
+                              >
+                                {esActivo ? <PowerOff size={14}/> : <Power size={14}/>}
+                                {esActivo ? 'Suspender Acceso' : 'Activar Acceso'}
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </motion.div>
+              )}
+
               {activeTab === 'admins' && (
                 <motion.div key="admins" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-8">
                   <div className="flex justify-between items-center">

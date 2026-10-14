@@ -35,25 +35,8 @@ export const getTenantsList = async () => {
       // Tabla puede no existir aún en entornos sin migrar
     }
 
-    // 2. Consultar puestos/locales registrados en negocios_informales
-    try {
-      const { data: negocios, error: negError } = await supabase
-        .from('negocios_informales')
-        .select('id, nombre_negocio, nombre_cliente')
-        .order('nombre_negocio', { ascending: true });
-
-      if (!negError && Array.isArray(negocios)) {
-        negocios.forEach(n => {
-          list.push({
-            id: n.id,
-            nombre: `📍 Puesto: ${n.nombre_negocio} (${n.nombre_cliente || 'Sin titular'})`,
-            tipo: 'negocio_informal'
-          });
-        });
-      }
-    } catch (e) {
-      // Error silencioso
-    }
+    // Nota: Los puestos de negocios_informales son entidades internas de la organización,
+    // NO se listan aquí para evitar mezclar clientes/tenants con puestos individuales.
 
     return { success: true, data: list };
   } catch (err) {
