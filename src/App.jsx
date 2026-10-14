@@ -1043,6 +1043,9 @@ function App() {
               </form>
             </motion.div>
           </div>
+        )}
+      </AnimatePresence>
+
       {/* Botón flotante para Desarrollador en toda la app */}
       {esDevUser && (
         <button
@@ -1055,17 +1058,6 @@ function App() {
           <span className="hidden sm:inline">Dev Console</span>
         </button>
       )}
-
-      {/* DevTools Modal dentro de la App */}
-      <AnimatePresence>
-        {mostrarDevTools && (
-          <DevTools 
-            onClose={() => setMostrarDevTools(false)} 
-            currentAdmin={admin} 
-            onAction={() => setRefreshKey(k => k + 1)}
-          />
-        )}
-      </AnimatePresence>
       </div>
     );
   };
