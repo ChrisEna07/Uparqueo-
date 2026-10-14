@@ -10,7 +10,7 @@ import {
 import { getTenantsList } from '../services/tenantService';
 import { createOrganizationAdmin } from '../services/authService';
 
-export const DevPortal = () => {
+export const DevPortal = ({ onlineOrgsMapProp = {} }) => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [adminKeyInput, setAdminKeyInput] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
@@ -54,36 +54,56 @@ export const DevPortal = () => {
   const [orgErrorMsg, setOrgErrorMsg] = useState('');
 
   // Rastrear Organizaciones Online en tiempo real
-  const [onlineOrgsMap, setOnlineOrgsMap] = useState({});
+  const [localOnlineOrgsMap, setLocalOnlineOrgsMap] = useState({});
+  const onlineOrgsMap = (onlineOrgsMapProp && Object.keys(onlineOrgsMapProp).length > 0)
+    ? onlineOrgsMapProp
+    : localOnlineOrgsMap;
 
   // Clave maestra configurada en .env o fallback de seguridad
   const DEV_MASTER_KEY = import.meta.env.VITE_DEV_ADMIN_KEY || 'ChrizDev07';
 
   const isUuid = (val) => Boolean(val && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val));
 
-  // Suscripción a presencia en tiempo real para saber qué organizaciones están online
+  // Suscripción a presencia en tiempo real de forma segura
   useEffect(() => {
     if (!isAuthenticated) return;
-    const channel = supabase.channel('uparqueo_presence');
-
-    channel
-      .on('presence', { event: 'sync' }, () => {
-        const state = channel.presenceState();
-        const counts = {};
-        Object.values(state).forEach(presences => {
-          presences.forEach(p => {
-            if (p.organizacion_id) {
-              counts[p.organizacion_id] = (counts[p.organizacion_id] || 0) + 1;
-            }
+    try {
+      const existing = supabase.getChannels().find(c => c.topic === 'realtime:uparqueo_presence');
+      if (existing) {
+        try {
+          const state = existing.presenceState();
+          const counts = {};
+          Object.values(state).forEach(presences => {
+            presences.forEach(p => {
+              if (p.organizacion_id) {
+                counts[p.organizacion_id] = (counts[p.organizacion_id] || 0) + 1;
+              }
+            });
           });
-        });
-        setOnlineOrgsMap(counts);
-      })
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
+          setLocalOnlineOrgsMap(counts);
+        } catch (e) {}
+      } else {
+        const channel = supabase.channel('uparqueo_presence');
+        channel
+          .on('presence', { event: 'sync' }, () => {
+            try {
+              const state = channel.presenceState();
+              const counts = {};
+              Object.values(state).forEach(presences => {
+                presences.forEach(p => {
+                  if (p.organizacion_id) {
+                    counts[p.organizacion_id] = (counts[p.organizacion_id] || 0) + 1;
+                  }
+                });
+              });
+              setLocalOnlineOrgsMap(counts);
+            } catch (err) {}
+          })
+          .subscribe();
+      }
+    } catch (e) {
+      console.warn('[DevPortal] Presence safe check:', e);
+    }
   }, [isAuthenticated]);
 
   useEffect(() => {

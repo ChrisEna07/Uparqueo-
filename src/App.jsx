@@ -38,6 +38,7 @@ function App() {
   const [mostrarPerfil, setMostrarPerfil] = useState(false);
   const [perfilForm, setPerfilForm] = useState({ nombre_completo: '', foto_perfil: '' });
   const [devTaps, setDevTaps] = useState(0);
+  const [onlineOrgsMap, setOnlineOrgsMap] = useState({});
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [showCamera, setShowCamera] = useState(false);
   const [theme, setTheme] = useState(localStorage.getItem('uparqueo_theme') || 'light');
@@ -238,6 +239,23 @@ function App() {
     const ch = supabase.channel('uparqueo_presence', {
       config: {
         presence: { key: admin.id }
+      }
+    });
+
+    ch.on('presence', { event: 'sync' }, () => {
+      try {
+        const state = ch.presenceState();
+        const counts = {};
+        Object.values(state).forEach(presences => {
+          presences.forEach(p => {
+            if (p.organizacion_id) {
+              counts[p.organizacion_id] = (counts[p.organizacion_id] || 0) + 1;
+            }
+          });
+        });
+        setOnlineOrgsMap(counts);
+      } catch (err) {
+        console.warn('[Presence] Error reading presenceState:', err);
       }
     });
 
@@ -537,6 +555,7 @@ function App() {
                 onClose={() => setMostrarDevTools(false)} 
                 currentAdmin={admin} 
                 onAction={() => setRefreshKey(k => k + 1)}
+                onlineOrgsMap={onlineOrgsMap}
               />
             )}
           </AnimatePresence>
@@ -559,6 +578,7 @@ function App() {
                 onClose={() => setMostrarDevTools(false)} 
                 currentAdmin={admin} 
                 onAction={() => setRefreshKey(k => k + 1)}
+                onlineOrgsMap={onlineOrgsMap}
               />
             )}
           </AnimatePresence>
@@ -920,6 +940,7 @@ function App() {
               onClose={() => setMostrarDevTools(false)} 
               currentAdmin={admin} 
               onAction={() => setRefreshKey(k => k + 1)}
+              onlineOrgsMap={onlineOrgsMap}
             />
         )}
       </AnimatePresence>
@@ -1064,7 +1085,7 @@ function App() {
 
   return (
     <Routes>
-      <Route path="/dev-portal" element={<DevPortal />} />
+      <Route path="/dev-portal" element={<DevPortal onlineOrgsMapProp={onlineOrgsMap} />} />
       <Route path="*" element={renderAppContent()} />
     </Routes>
   );

@@ -17,7 +17,7 @@ import { getTenantsList } from '../services/tenantService';
 import ModuloSoporte from './ModuloSoporte';
 import Swal from 'sweetalert2';
 
-const DevTools = ({ onClose, currentAdmin, onAction }) => {
+const DevTools = ({ onClose, currentAdmin, onAction, onlineOrgsMap = {} }) => {
   const [cargando, setCargando] = useState(false);
   const [menuAbierto, setMenuAbierto] = useState(false);
   const [activeTab, setActiveTab] = useState('organizaciones'); 
@@ -55,7 +55,10 @@ const DevTools = ({ onClose, currentAdmin, onAction }) => {
   // Estados para Organizaciones & Presencia Online
   const [organizacionesList, setOrganizacionesList] = useState([]);
   const [empleadosCounts, setEmpleadosCounts] = useState({});
-  const [onlineOrgsMap, setOnlineOrgsMap] = useState({});
+  const [localOnlineOrgsMap, setLocalOnlineOrgsMap] = useState({});
+  const effectiveOnlineOrgsMap = (onlineOrgsMap && Object.keys(onlineOrgsMap).length > 0)
+    ? onlineOrgsMap
+    : localOnlineOrgsMap;
 
   const [formData, setFormData] = useState({
     username: '',
@@ -70,26 +73,44 @@ const DevTools = ({ onClose, currentAdmin, onAction }) => {
     inicializarBilling();
     cargarOrganizaciones();
 
-    // Rastrear presencia en tiempo real
-    const channel = supabase.channel('uparqueo_presence');
-    channel
-      .on('presence', { event: 'sync' }, () => {
-        const state = channel.presenceState();
-        const counts = {};
-        Object.values(state).forEach(presences => {
-          presences.forEach(p => {
-            if (p.organizacion_id) {
-              counts[p.organizacion_id] = (counts[p.organizacion_id] || 0) + 1;
-            }
+    // Rastrear presencia de forma segura sin colisión de suscripción
+    try {
+      const existing = supabase.getChannels().find(c => c.topic === 'realtime:uparqueo_presence');
+      if (existing) {
+        try {
+          const state = existing.presenceState();
+          const counts = {};
+          Object.values(state).forEach(presences => {
+            presences.forEach(p => {
+              if (p.organizacion_id) {
+                counts[p.organizacion_id] = (counts[p.organizacion_id] || 0) + 1;
+              }
+            });
           });
-        });
-        setOnlineOrgsMap(counts);
-      })
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
+          setLocalOnlineOrgsMap(counts);
+        } catch (e) {}
+      } else {
+        const channel = supabase.channel('uparqueo_presence');
+        channel
+          .on('presence', { event: 'sync' }, () => {
+            try {
+              const state = channel.presenceState();
+              const counts = {};
+              Object.values(state).forEach(presences => {
+                presences.forEach(p => {
+                  if (p.organizacion_id) {
+                    counts[p.organizacion_id] = (counts[p.organizacion_id] || 0) + 1;
+                  }
+                });
+              });
+              setLocalOnlineOrgsMap(counts);
+            } catch (err) {}
+          })
+          .subscribe();
+      }
+    } catch (e) {
+      console.warn('[DevTools] Presence safe check:', e);
+    }
   }, []);
 
   const cargarOrganizaciones = async () => {
@@ -744,14 +765,14 @@ const DevTools = ({ onClose, currentAdmin, onAction }) => {
                           <div className="flex items-center gap-2 mt-1">
                             <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-ping"></span>
                             <span className="text-3xl font-black text-cyan-400">
-                              {organizacionesList.filter(o => (onlineOrgsMap[o.id] || 0) > 0).length}
+                              {organizacionesList.filter(o => (effectiveOnlineOrgsMap[o.id] || 0) > 0).length}
                             </span>
                           </div>
                         </div>
                         <div className="bg-gray-900/50 border border-gray-800 p-5 rounded-2xl">
                           <span className="text-[10px] font-black text-purple-400 uppercase tracking-widest block">Sesiones Activas</span>
                           <span className="text-3xl font-black text-purple-400 mt-1 block">
-                            {Object.values(onlineOrgsMap).reduce((a, b) => a + b, 0)}
+                            {Object.values(effectiveOnlineOrgsMap).reduce((a, b) => a + b, 0)}
                           </span>
                         </div>
                       </div>
@@ -773,7 +794,7 @@ const DevTools = ({ onClose, currentAdmin, onAction }) => {
                           organizacionesList.map(org => {
                             const cantEmp = empleadosCounts[org.id] || 0;
                             const esActivo = org.estado === 'activo';
-                            const numOnline = onlineOrgsMap[org.id] || 0;
+                            const numOnline = effectiveOnlineOrgsMap[org.id] || 0;
 
                             return (
                               <div 
