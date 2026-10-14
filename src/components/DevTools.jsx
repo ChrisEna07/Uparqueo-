@@ -9,9 +9,10 @@ import {
   UserPlus, UserCheck, ShieldCheck, Edit2, Eye, EyeOff, Clock,
   LayoutGrid, MessageSquare, ShieldAlert, Search, ArrowLeft, Send, Menu,
   TrendingDown, CreditCard, Save, CheckCircle, Building2,
-  ExternalLink, Power, PowerOff, RefreshCw, Wifi, WifiOff
+  ExternalLink, Power, PowerOff, RefreshCw, Wifi, WifiOff,
+  PlusCircle, Check
 } from 'lucide-react';
-import { getAdmins, createAdmin, deleteAdmin, updateAdmin } from '../services/authService';
+import { getAdmins, createAdmin, deleteAdmin, updateAdmin, createOrganizationAdmin } from '../services/authService';
 import { getTenantsList } from '../services/tenantService';
 import ModuloSoporte from './ModuloSoporte';
 import Swal from 'sweetalert2';
@@ -19,9 +20,17 @@ import Swal from 'sweetalert2';
 const DevTools = ({ onClose, currentAdmin, onAction }) => {
   const [cargando, setCargando] = useState(false);
   const [menuAbierto, setMenuAbierto] = useState(false);
-  const [activeTab, setActiveTab] = useState('admins'); 
+  const [activeTab, setActiveTab] = useState('organizaciones'); 
   const [adminsList, setAdminsList] = useState([]);
   const [modo, setModo] = useState('lista'); 
+  const [modoOrg, setModoOrg] = useState('lista'); // 'lista' | 'crear'
+  const [nuevaOrgForm, setNuevaOrgForm] = useState({
+    nombre: '',
+    modulos: ['parqueadero', 'informal'],
+    admin_nombre: '',
+    admin_username: '',
+    admin_password: ''
+  });
   const [usuarioSel, setUsuarioSel] = useState(null);
   const [subRolEmpleado, setSubRolEmpleado] = useState('parqueo'); // parqueo, informales, ambos
   const [showCamera, setShowCamera] = useState(false);
@@ -142,6 +151,103 @@ const DevTools = ({ onClose, currentAdmin, onAction }) => {
       cargarOrganizaciones();
     } catch (err) {
       Swal.fire('Error', err.message || 'No se pudo actualizar.', 'error');
+    }
+  };
+
+  const handleCrearOrganizacionConAcceso = async (e) => {
+    e.preventDefault();
+    if (!nuevaOrgForm.nombre.trim()) {
+      return Swal.fire('Campo requerido', 'Ingresa el nombre de la organización', 'warning');
+    }
+    if (nuevaOrgForm.modulos.length === 0) {
+      return Swal.fire('Módulos requeridos', 'Selecciona al menos un módulo activo', 'warning');
+    }
+    if (!nuevaOrgForm.admin_username.trim() || !nuevaOrgForm.admin_password.trim()) {
+      return Swal.fire('Cuenta requerida', 'Ingresa usuario y contraseña para que la organización tenga acceso a la app', 'warning');
+    }
+    if (nuevaOrgForm.admin_password.length < 6) {
+      return Swal.fire('Contraseña corta', 'La contraseña debe tener al menos 6 caracteres', 'warning');
+    }
+
+    setCargando(true);
+    try {
+      // 1. Generar slug
+      const slug = nuevaOrgForm.nombre.trim().toLowerCase()
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/(^-|-$)/g, '');
+
+      // 2. Crear Organización en Supabase
+      const { data: newOrg, error: orgError } = await supabase
+        .from('organizaciones')
+        .insert([{
+          nombre: nuevaOrgForm.nombre.trim(),
+          slug,
+          modulos_activos: nuevaOrgForm.modulos,
+          estado: 'activo'
+        }])
+        .select()
+        .single();
+
+      if (orgError) throw orgError;
+
+      // 3. Crear el Administrador con acceso a la app
+      const adminRes = await createOrganizationAdmin({
+        organizacion_id: newOrg.id,
+        nombre_completo: nuevaOrgForm.admin_nombre.trim() || `Admin ${nuevaOrgForm.nombre.trim()}`,
+        username: nuevaOrgForm.admin_username.trim().toLowerCase(),
+        password: nuevaOrgForm.admin_password.trim(),
+        modulos_permitidos: nuevaOrgForm.modulos
+      });
+
+      if (!adminRes.success) {
+        throw new Error(adminRes.message || 'Error al crear el acceso de administrador');
+      }
+
+      // 4. Inicializar registro de cobro para evitar bloqueos
+      await supabase
+        .from('tenant_billing')
+        .insert([{
+          tenant_id: newOrg.id,
+          organizacion_id: newOrg.id,
+          banner_activo: false,
+          tipo_aviso: 'banner',
+          es_bloqueante: false,
+          mensaje: 'Servicio activo.',
+          datos_pago: ''
+        }]);
+
+      await Swal.fire({
+        title: '¡Organización Registrada!',
+        html: `
+          <div style="text-align: left; font-size: 13px; line-height: 1.6;">
+            <p><strong>Organización:</strong> ${newOrg.nombre}</p>
+            <p><strong>Usuario de acceso:</strong> @${nuevaOrgForm.admin_username.trim().toLowerCase()}</p>
+            <p><strong>Módulos activos:</strong> ${nuevaOrgForm.modulos.join(', ')}</p>
+            <p style="color: #10B981; margin-top: 8px;">✅ Ya puede iniciar sesión en la app desde el login con este usuario.</p>
+          </div>
+        `,
+        icon: 'success',
+        confirmButtonColor: '#2563EB',
+        confirmButtonText: 'Entendido'
+      });
+
+      setNuevaOrgForm({
+        nombre: '',
+        modulos: ['parqueadero', 'informal'],
+        admin_nombre: '',
+        admin_username: '',
+        admin_password: ''
+      });
+      setModoOrg('lista');
+      await cargarOrganizaciones();
+      await cargarAdmins();
+      if (onAction) onAction();
+    } catch (err) {
+      console.error('Error al registrar organización:', err);
+      Swal.fire('Error', err.message || 'No se pudo crear la organización', 'error');
+    } finally {
+      setCargando(false);
     }
   };
 
@@ -413,11 +519,23 @@ const DevTools = ({ onClose, currentAdmin, onAction }) => {
 
         {/* CONTENIDO */}
         <div className="flex-1 flex flex-col overflow-hidden bg-gradient-to-br from-gray-950 to-gray-900 relative">
-            <div className="px-12 py-10 border-b border-gray-800/50 flex justify-between items-end">
+            <div className="px-6 md:px-12 py-6 border-b border-gray-800/60 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-gray-950/40">
               <div>
-                <h2 className="text-5xl font-black text-white tracking-tighter">Gestión <span className="text-blue-500">Master</span></h2>
-                <p className="text-gray-500 text-sm mt-2 font-medium">Define accesos y roles con precisión quirúrgica</p>
+                <h2 className="text-2xl md:text-4xl font-black text-white tracking-tighter">Gestión <span className="text-blue-500">Master</span></h2>
+                <p className="text-gray-400 text-xs mt-0.5 font-medium">Control de Organizaciones, Clientes, Cobros y Accesos</p>
               </div>
+
+              {/* BOTON DESTACADO AL PORTAL DE DESARROLLADOR WEB */}
+              <button
+                onClick={() => {
+                  onClose();
+                  navigate('/dev-portal');
+                }}
+                className="bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white font-black px-5 py-3 rounded-2xl shadow-xl shadow-blue-900/40 border border-white/20 flex items-center gap-2 text-xs uppercase tracking-wider transition-all active:scale-95 cursor-pointer shrink-0"
+              >
+                <ExternalLink size={16} className="text-blue-200" />
+                <span>Portal Desarrollador Web (/dev-portal)</span>
+              </button>
             </div>
 
           <div className="flex-1 overflow-y-auto px-8 md:px-12 py-10 custom-scrollbar">
@@ -428,143 +546,311 @@ const DevTools = ({ onClose, currentAdmin, onAction }) => {
                     <div>
                       <h3 className="text-3xl font-black text-white">Organizaciones & Clientes</h3>
                       <p className="text-gray-400 text-xs mt-1 font-medium">
-                        Monitorea estado de conexión en tiempo real y gestiona suspensiones
+                        Registra organizaciones, genera accesos de usuario a la app y monitorea estado online
                       </p>
                     </div>
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-3 flex-wrap">
+                      {modoOrg === 'lista' ? (
+                        <button 
+                          onClick={() => setModoOrg('crear')}
+                          className="bg-emerald-600 hover:bg-emerald-500 text-white px-5 py-3 rounded-2xl font-black text-xs uppercase tracking-wider flex items-center gap-2 transition shadow-lg shadow-emerald-900/30 active:scale-95 cursor-pointer"
+                        >
+                          <PlusCircle size={16}/> + Registrar Organización & Acceso
+                        </button>
+                      ) : (
+                        <button 
+                          onClick={() => setModoOrg('lista')}
+                          className="bg-gray-800 hover:bg-gray-700 text-gray-300 px-5 py-3 rounded-2xl font-black text-xs uppercase tracking-wider flex items-center gap-2 transition cursor-pointer"
+                        >
+                          <X size={16}/> Volver al Listado
+                        </button>
+                      )}
                       <button 
                         onClick={cargarOrganizaciones}
-                        className="bg-gray-900 border border-gray-800 text-gray-300 hover:text-white px-5 py-3 rounded-2xl font-black text-xs uppercase tracking-wider flex items-center gap-2 transition"
+                        className="bg-gray-900 border border-gray-800 text-gray-300 hover:text-white px-4 py-3 rounded-2xl font-black text-xs uppercase tracking-wider flex items-center gap-2 transition cursor-pointer"
                       >
-                        <RefreshCw size={16}/> Recargar
-                      </button>
-                      <button 
-                        onClick={() => {
-                          onClose();
-                          navigate('/dev-portal');
-                        }}
-                        className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-3 rounded-2xl font-black text-xs uppercase tracking-wider flex items-center gap-2 transition shadow-lg shadow-blue-900/30"
-                      >
-                        <ExternalLink size={16}/> Portal Web
+                        <RefreshCw size={15}/> Recargar
                       </button>
                     </div>
                   </div>
 
-                  {/* Resumen de Métricas */}
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    <div className="bg-gray-900/50 border border-gray-800 p-5 rounded-2xl">
-                      <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest block">Registradas</span>
-                      <span className="text-3xl font-black text-white mt-1 block">{organizacionesList.length}</span>
-                    </div>
-                    <div className="bg-gray-900/50 border border-gray-800 p-5 rounded-2xl">
-                      <span className="text-[10px] font-black text-emerald-400 uppercase tracking-widest block">Activas</span>
-                      <span className="text-3xl font-black text-emerald-400 mt-1 block">
-                        {organizacionesList.filter(o => o.estado === 'activo').length}
-                      </span>
-                    </div>
-                    <div className="bg-gray-900/50 border border-gray-800 p-5 rounded-2xl">
-                      <span className="text-[10px] font-black text-cyan-400 uppercase tracking-widest block">Online Ahora</span>
-                      <div className="flex items-center gap-2 mt-1">
-                        <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-ping"></span>
-                        <span className="text-3xl font-black text-cyan-400">
-                          {organizacionesList.filter(o => (onlineOrgsMap[o.id] || 0) > 0).length}
-                        </span>
+                  {modoOrg === 'crear' ? (
+                    <form onSubmit={handleCrearOrganizacionConAcceso} className="bg-gray-900/60 border border-gray-800 rounded-[2.5rem] p-8 md:p-10 shadow-2xl space-y-8 max-w-4xl mx-auto">
+                      <div className="border-b border-gray-800 pb-4 flex items-center gap-3">
+                        <div className="p-3 bg-emerald-600/20 text-emerald-400 rounded-2xl border border-emerald-500/30">
+                          <Building2 size={24} />
+                        </div>
+                        <div>
+                          <h4 className="text-2xl font-black text-white">Alta de Organización y Acceso a la App</h4>
+                          <p className="text-gray-400 text-xs">Crea la empresa cliente y genera sus credenciales inmediatas de inicio de sesión</p>
+                        </div>
                       </div>
-                    </div>
-                    <div className="bg-gray-900/50 border border-gray-800 p-5 rounded-2xl">
-                      <span className="text-[10px] font-black text-purple-400 uppercase tracking-widest block">Sesiones Activas</span>
-                      <span className="text-3xl font-black text-purple-400 mt-1 block">
-                        {Object.values(onlineOrgsMap).reduce((a, b) => a + b, 0)}
-                      </span>
-                    </div>
-                  </div>
 
-                  {/* Tarjetas de Organizaciones */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {organizacionesList.length === 0 ? (
-                      <div className="col-span-2 text-center py-12 text-gray-500 font-bold bg-gray-900/20 border border-gray-800 rounded-3xl">
-                        No hay organizaciones registradas en el sistema.
-                      </div>
-                    ) : (
-                      organizacionesList.map(org => {
-                        const cantEmp = empleadosCounts[org.id] || 0;
-                        const esActivo = org.estado === 'activo';
-                        const numOnline = onlineOrgsMap[org.id] || 0;
-
-                        return (
-                          <div 
-                            key={org.id} 
-                            className="bg-gray-900/40 border border-gray-800 hover:border-gray-700 rounded-3xl p-6 transition flex flex-col justify-between gap-6"
-                          >
-                            <div className="space-y-3">
-                              <div className="flex items-start justify-between gap-4">
-                                <div className="flex items-center gap-3">
-                                  <div className="p-3 bg-blue-600/10 text-blue-400 rounded-2xl border border-blue-500/20">
-                                    <Building2 size={24} />
-                                  </div>
-                                  <div>
-                                    <h4 className="text-lg font-black text-white">{org.nombre}</h4>
-                                    <span className="text-xs text-gray-500 font-mono">@{org.slug}</span>
-                                  </div>
-                                </div>
-
-                                <div className="flex flex-col items-end gap-1.5">
-                                  {numOnline > 0 ? (
-                                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                                      <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                                      Online ({numOnline})
-                                    </span>
-                                  ) : (
-                                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-gray-800 text-gray-500 border border-gray-700">
-                                      <span className="w-1.5 h-1.5 rounded-full bg-gray-600"></span>
-                                      Offline
-                                    </span>
-                                  )}
-
-                                  <span className={`inline-block px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider ${
-                                    esActivo 
-                                      ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20' 
-                                      : 'bg-red-500/10 text-red-400 border border-red-500/20'
-                                  }`}>
-                                    {org.estado}
-                                  </span>
-                                </div>
-                              </div>
-
-                              <div className="flex items-center gap-2 pt-2 flex-wrap">
-                                <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mr-1">Módulos:</span>
-                                {Array.isArray(org.modulos_activos) && org.modulos_activos.map(m => (
-                                  <span key={m} className="px-2.5 py-1 bg-gray-800 text-gray-300 rounded-xl text-[10px] font-bold border border-gray-700">
-                                    {m}
-                                  </span>
-                                ))}
-                              </div>
-
-                              <div className="flex items-center gap-2 text-gray-400 text-xs pt-1">
-                                <Users size={14} className="text-gray-500" />
-                                <span><strong>{cantEmp}</strong> colaboradores / cuentas</span>
-                              </div>
-                            </div>
-
-                            <div className="pt-4 border-t border-gray-800/80 flex items-center justify-between gap-3">
-                              <span className="text-[11px] text-gray-500">ID: {org.id.slice(0, 8)}...</span>
-                              <button
-                                onClick={() => handleToggleEstadoOrg(org)}
-                                className={`px-4 py-2.5 rounded-2xl font-bold text-xs transition flex items-center gap-2 ${
-                                  esActivo
-                                    ? 'bg-red-600/10 hover:bg-red-600 text-red-400 hover:text-white border border-red-600/30'
-                                    : 'bg-emerald-600/10 hover:bg-emerald-600 text-emerald-400 hover:text-white border border-emerald-600/30'
+                      {/* PASO 1: DATOS DE LA EMPRESA */}
+                      <div className="space-y-4">
+                        <h5 className="text-xs font-black uppercase tracking-widest text-blue-400 flex items-center gap-2">
+                          <span>1. Datos de la Organización</span>
+                        </h5>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div className="md:col-span-2">
+                            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">Nombre de la Organización</label>
+                            <input
+                              type="text"
+                              required
+                              value={nuevaOrgForm.nombre}
+                              onChange={e => setNuevaOrgForm({...nuevaOrgForm, nombre: e.target.value})}
+                              placeholder="Ej: Parqueadero San Juan, Moncho Express..."
+                              className="w-full bg-gray-950 border border-gray-800 rounded-2xl p-4 text-white font-bold outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                            />
+                          </div>
+                          
+                          <div className="md:col-span-2">
+                            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">Módulos Asignados para esta Organización</label>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                              <label
+                                onClick={() => {
+                                  const mod = 'parqueadero';
+                                  const exists = nuevaOrgForm.modulos.includes(mod);
+                                  const updated = exists 
+                                    ? nuevaOrgForm.modulos.filter(m => m !== mod)
+                                    : [...nuevaOrgForm.modulos, mod];
+                                  setNuevaOrgForm({...nuevaOrgForm, modulos: updated});
+                                }}
+                                className={`p-4 rounded-2xl border flex items-center gap-3 cursor-pointer select-none transition ${
+                                  nuevaOrgForm.modulos.includes('parqueadero')
+                                    ? 'bg-blue-600/20 border-blue-500/50 text-white'
+                                    : 'bg-gray-950 border-gray-800 text-gray-400'
                                 }`}
                               >
-                                {esActivo ? <PowerOff size={14}/> : <Power size={14}/>}
-                                {esActivo ? 'Suspender Acceso' : 'Activar Acceso'}
-                              </button>
+                                <div className={`w-5 h-5 rounded-lg flex items-center justify-center border ${
+                                  nuevaOrgForm.modulos.includes('parqueadero') ? 'bg-blue-600 border-blue-500 text-white' : 'border-gray-700 bg-gray-900'
+                                }`}>
+                                  {nuevaOrgForm.modulos.includes('parqueadero') && <Check size={14} />}
+                                </div>
+                                <div>
+                                  <span className="font-bold text-sm block">Módulo Parqueadero</span>
+                                  <span className="text-[11px] text-gray-400">Control de vehículos y cobros</span>
+                                </div>
+                              </label>
+
+                              <label
+                                onClick={() => {
+                                  const mod = 'informal';
+                                  const exists = nuevaOrgForm.modulos.includes(mod);
+                                  const updated = exists 
+                                    ? nuevaOrgForm.modulos.filter(m => m !== mod)
+                                    : [...nuevaOrgForm.modulos, mod];
+                                  setNuevaOrgForm({...nuevaOrgForm, modulos: updated});
+                                }}
+                                className={`p-4 rounded-2xl border flex items-center gap-3 cursor-pointer select-none transition ${
+                                  nuevaOrgForm.modulos.includes('informal')
+                                    ? 'bg-blue-600/20 border-blue-500/50 text-white'
+                                    : 'bg-gray-950 border-gray-800 text-gray-400'
+                                }`}
+                              >
+                                <div className={`w-5 h-5 rounded-lg flex items-center justify-center border ${
+                                  nuevaOrgForm.modulos.includes('informal') ? 'bg-blue-600 border-blue-500 text-white' : 'border-gray-700 bg-gray-900'
+                                }`}>
+                                  {nuevaOrgForm.modulos.includes('informal') && <Check size={14} />}
+                                </div>
+                                <div>
+                                  <span className="font-bold text-sm block">Negocios Informales</span>
+                                  <span className="text-[11px] text-gray-400">Puestos y recaudo comercial</span>
+                                </div>
+                              </label>
                             </div>
                           </div>
-                        );
-                      })
-                    )}
-                  </div>
+                        </div>
+                      </div>
+
+                      {/* PASO 2: CUENTA DE ADMINISTRADOR PARA INICIAR SESIÓN */}
+                      <div className="space-y-4 pt-4 border-t border-gray-800">
+                        <h5 className="text-xs font-black uppercase tracking-widest text-emerald-400 flex items-center gap-2">
+                          <span>2. Cuenta de Administrador (Acceso a la App)</span>
+                        </h5>
+                        <p className="text-xs text-gray-400">
+                          Estas serán las credenciales con las que el cliente entrará desde la pantalla de login.
+                        </p>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div className="md:col-span-2">
+                            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">Nombre Completo del Responsable</label>
+                            <input
+                              type="text"
+                              required
+                              value={nuevaOrgForm.admin_nombre}
+                              onChange={e => setNuevaOrgForm({...nuevaOrgForm, admin_nombre: e.target.value})}
+                              placeholder="Ej: Carlos Gómez"
+                              className="w-full bg-gray-950 border border-gray-800 rounded-2xl p-4 text-white font-bold outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">Usuario (Username para Login)</label>
+                            <input
+                              type="text"
+                              required
+                              value={nuevaOrgForm.admin_username}
+                              onChange={e => setNuevaOrgForm({...nuevaOrgForm, admin_username: e.target.value})}
+                              placeholder="Ej: carlosgomez"
+                              className="w-full bg-gray-950 border border-gray-800 rounded-2xl p-4 text-white font-bold outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                            />
+                            <span className="text-[10px] text-gray-500 mt-1 block">Iniciará sesión con este usuario en el login</span>
+                          </div>
+                          <div>
+                            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">Contraseña de Acceso (mínimo 6 caracteres)</label>
+                            <input
+                              type="password"
+                              required
+                              value={nuevaOrgForm.admin_password}
+                              onChange={e => setNuevaOrgForm({...nuevaOrgForm, admin_password: e.target.value})}
+                              placeholder="••••••••"
+                              className="w-full bg-gray-950 border border-gray-800 rounded-2xl p-4 text-white font-bold outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="pt-6 border-t border-gray-800 flex flex-col sm:flex-row justify-end gap-3">
+                        <button
+                          type="button"
+                          onClick={() => setModoOrg('lista')}
+                          className="px-6 py-4 rounded-2xl font-black text-xs uppercase tracking-wider text-gray-400 hover:text-white hover:bg-gray-800 transition"
+                        >
+                          Cancelar
+                        </button>
+                        <button
+                          type="submit"
+                          className="bg-emerald-600 hover:bg-emerald-500 text-white font-black px-8 py-4 rounded-2xl shadow-xl shadow-emerald-900/30 flex items-center justify-center gap-2 text-xs uppercase tracking-wider transition-all active:scale-95 cursor-pointer"
+                        >
+                          <CheckCircle size={18} /> Crear Organización y Dar Acceso a la App
+                        </button>
+                      </div>
+                    </form>
+                  ) : (
+                    <>
+                      {/* Resumen de Métricas */}
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <div className="bg-gray-900/50 border border-gray-800 p-5 rounded-2xl">
+                          <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest block">Registradas</span>
+                          <span className="text-3xl font-black text-white mt-1 block">{organizacionesList.length}</span>
+                        </div>
+                        <div className="bg-gray-900/50 border border-gray-800 p-5 rounded-2xl">
+                          <span className="text-[10px] font-black text-emerald-400 uppercase tracking-widest block">Activas</span>
+                          <span className="text-3xl font-black text-emerald-400 mt-1 block">
+                            {organizacionesList.filter(o => o.estado === 'activo').length}
+                          </span>
+                        </div>
+                        <div className="bg-gray-900/50 border border-gray-800 p-5 rounded-2xl">
+                          <span className="text-[10px] font-black text-cyan-400 uppercase tracking-widest block">Online Ahora</span>
+                          <div className="flex items-center gap-2 mt-1">
+                            <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-ping"></span>
+                            <span className="text-3xl font-black text-cyan-400">
+                              {organizacionesList.filter(o => (onlineOrgsMap[o.id] || 0) > 0).length}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="bg-gray-900/50 border border-gray-800 p-5 rounded-2xl">
+                          <span className="text-[10px] font-black text-purple-400 uppercase tracking-widest block">Sesiones Activas</span>
+                          <span className="text-3xl font-black text-purple-400 mt-1 block">
+                            {Object.values(onlineOrgsMap).reduce((a, b) => a + b, 0)}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Tarjetas de Organizaciones */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        {organizacionesList.length === 0 ? (
+                          <div className="col-span-2 text-center py-16 text-gray-500 font-bold bg-gray-900/20 border border-gray-800 rounded-3xl space-y-3">
+                            <Building2 size={40} className="mx-auto text-gray-600 opacity-40" />
+                            <p className="text-base text-gray-400 font-black">No hay organizaciones registradas en el sistema.</p>
+                            <button
+                              onClick={() => setModoOrg('crear')}
+                              className="bg-emerald-600 hover:bg-emerald-500 text-white px-6 py-3 rounded-2xl font-black text-xs uppercase tracking-wider inline-flex items-center gap-2 transition"
+                            >
+                              <PlusCircle size={16}/> Registrar Primera Organización
+                            </button>
+                          </div>
+                        ) : (
+                          organizacionesList.map(org => {
+                            const cantEmp = empleadosCounts[org.id] || 0;
+                            const esActivo = org.estado === 'activo';
+                            const numOnline = onlineOrgsMap[org.id] || 0;
+
+                            return (
+                              <div 
+                                key={org.id} 
+                                className="bg-gray-900/40 border border-gray-800 hover:border-gray-700 rounded-3xl p-6 transition flex flex-col justify-between gap-6"
+                              >
+                                <div className="space-y-3">
+                                  <div className="flex items-start justify-between gap-4">
+                                    <div className="flex items-center gap-3">
+                                      <div className="p-3 bg-blue-600/10 text-blue-400 rounded-2xl border border-blue-500/20">
+                                        <Building2 size={24} />
+                                      </div>
+                                      <div>
+                                        <h4 className="text-lg font-black text-white">{org.nombre}</h4>
+                                        <span className="text-xs text-gray-500 font-mono">@{org.slug}</span>
+                                      </div>
+                                    </div>
+
+                                    <div className="flex flex-col items-end gap-1.5">
+                                      {numOnline > 0 ? (
+                                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                                          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                                          Online ({numOnline})
+                                        </span>
+                                      ) : (
+                                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-gray-800 text-gray-500 border border-gray-700">
+                                          <span className="w-1.5 h-1.5 rounded-full bg-gray-600"></span>
+                                          Offline
+                                        </span>
+                                      )}
+
+                                      <span className={`inline-block px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider ${
+                                        esActivo 
+                                          ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20' 
+                                          : 'bg-red-500/10 text-red-400 border border-red-500/20'
+                                      }`}>
+                                        {org.estado}
+                                      </span>
+                                    </div>
+                                  </div>
+
+                                  <div className="flex items-center gap-2 pt-2 flex-wrap">
+                                    <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mr-1">Módulos:</span>
+                                    {Array.isArray(org.modulos_activos) && org.modulos_activos.map(m => (
+                                      <span key={m} className="px-2.5 py-1 bg-gray-800 text-gray-300 rounded-xl text-[10px] font-bold border border-gray-700">
+                                        {m}
+                                      </span>
+                                    ))}
+                                  </div>
+
+                                  <div className="flex items-center gap-2 text-gray-400 text-xs pt-1">
+                                    <Users size={14} className="text-gray-500" />
+                                    <span><strong>{cantEmp}</strong> colaboradores / cuentas</span>
+                                  </div>
+                                </div>
+
+                                <div className="pt-4 border-t border-gray-800/80 flex items-center justify-between gap-3">
+                                  <span className="text-[11px] text-gray-500 font-mono">ID: {org.id.slice(0, 8)}...</span>
+                                  <button
+                                    onClick={() => handleToggleEstadoOrg(org)}
+                                    className={`px-4 py-2.5 rounded-2xl font-bold text-xs transition flex items-center gap-2 cursor-pointer ${
+                                      esActivo
+                                        ? 'bg-red-600/10 hover:bg-red-600 text-red-400 hover:text-white border border-red-600/30'
+                                        : 'bg-emerald-600/10 hover:bg-emerald-600 text-emerald-400 hover:text-white border border-emerald-600/30'
+                                    }`}
+                                  >
+                                    {esActivo ? <PowerOff size={14}/> : <Power size={14}/>}
+                                    {esActivo ? 'Suspender Acceso' : 'Activar Acceso'}
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })
+                        )}
+                      </div>
+                    </>
+                  )}
                 </motion.div>
               )}
 
@@ -602,6 +888,11 @@ const DevTools = ({ onClose, currentAdmin, onAction }) => {
                                    u.rol === 'informales' ? 'Admin Informales' : 
                                    u.rol?.replace('_', ' ')}
                                 </p>
+                                {u.organizacion_id && (
+                                  <span className="text-[9px] text-gray-400 font-semibold block mt-0.5 truncate max-w-[150px]">
+                                    🏢 {organizacionesList.find(o => o.id === u.organizacion_id)?.nombre || 'Org vinculada'}
+                                  </span>
+                                )}
                               </div>
                             </div>
                             <div className="flex gap-2">
@@ -640,9 +931,25 @@ const DevTools = ({ onClose, currentAdmin, onAction }) => {
                             </button>
                           </div>
                         </div>
-                        <div className="md:col-span-2">
+                        <div>
                           <label className="text-[10px] font-black text-gray-500 uppercase ml-2 mb-2 block tracking-widest">Nombre Real</label>
                           <input required value={formData.nombre_completo} onChange={e => setFormData({...formData, nombre_completo: e.target.value})} className="w-full bg-gray-950 border border-gray-800 rounded-2xl p-4 text-white font-bold outline-none focus:ring-2 focus:ring-blue-500"/>
+                        </div>
+
+                        <div>
+                          <label className="text-[10px] font-black text-gray-500 uppercase ml-2 mb-2 block tracking-widest">Organización Asignada</label>
+                          <select 
+                            value={formData.organizacion_id || ''} 
+                            onChange={e => setFormData({...formData, organizacion_id: e.target.value || null})} 
+                            className="w-full bg-gray-950 border border-gray-800 rounded-2xl p-4 text-white font-bold outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                          >
+                            <option value="">Sin Organización (Superadmin / Global)</option>
+                            {organizacionesList.map(org => (
+                              <option key={org.id} value={org.id}>
+                                🏢 {org.nombre} (@{org.slug})
+                              </option>
+                            ))}
+                          </select>
                         </div>
 
                         {/* FOTO DE PERFIL */}

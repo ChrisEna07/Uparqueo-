@@ -125,10 +125,10 @@ const Login = ({ onLoginSuccess }) => {
 
         <Link 
           to="/dev-portal"
-          className="w-full bg-slate-900/80 hover:bg-slate-800 text-gray-400 hover:text-white font-black py-3 rounded-2xl border border-gray-800 hover:border-blue-500/50 transition-all flex items-center justify-center gap-2 uppercase tracking-widest text-[10px] mt-3 cursor-pointer shadow-lg group"
+          className="w-full bg-gradient-to-r from-blue-900/40 via-indigo-900/40 to-slate-900 hover:from-blue-600 hover:to-indigo-600 text-blue-300 hover:text-white font-black py-3.5 rounded-2xl border border-blue-500/40 hover:border-blue-400 transition-all flex items-center justify-center gap-2.5 uppercase tracking-wider text-xs mt-3 cursor-pointer shadow-xl shadow-blue-950/40 group active:scale-95"
         >
-          <Shield size={14} className="text-blue-500 group-hover:scale-110 transition-transform" />
-          Portal de Desarrollador / Dev
+          <Shield size={16} className="text-blue-400 group-hover:text-white group-hover:scale-110 transition-transform" />
+          <span>Acceso al Portal de Desarrollador</span>
         </Link>
 
         <div className="mt-12 text-center space-y-3">
